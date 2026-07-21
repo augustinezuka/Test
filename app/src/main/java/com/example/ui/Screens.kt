@@ -1,0 +1,2120 @@
+package com.example.ui
+
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.ui.viewinterop.AndroidView
+import java.net.URLEncoder
+import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.data.UserProfile
+import com.example.data.forex.ForexPairData
+import com.example.viewmodel.ForexViewModel
+import com.example.viewmodel.MarketUiState
+import com.example.viewmodel.RecommendationUiState
+import com.example.ui.components.ForexChart
+import com.example.ui.theme.*
+import kotlinx.coroutines.launch
+
+// --- Onboarding Setup Screen ---
+
+@Composable
+fun OnboardingScreen(
+    viewModel: ForexViewModel,
+    onFinish: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var risk by remember { mutableStateOf("Moderate") }
+    var experience by remember { mutableStateOf("Intermediate") }
+    val pairs = listOf("EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "NZD/USD", "USD/CHF")
+    val selectedPairs = remember { mutableStateListOf("EUR/USD", "GBP/USD", "USD/JPY") }
+
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(CosmicBlack)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
+            Icon(
+                imageVector = Icons.Default.TrendingUp,
+                contentDescription = "App Logo",
+                tint = ElectricBlue,
+                modifier = Modifier.size(64.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Forex AI Recommendations",
+                color = TextWhite,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "Configure your trading profile to align the Gemini recommendation engine with your financial goals.",
+                color = TextGrey,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        // Trading Risk Option
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "1. Risk Tolerance Level",
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    val riskLevels = listOf("Conservative", "Moderate", "Aggressive")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        riskLevels.forEach { level ->
+                            val selected = risk == level
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (selected) ElectricBlue else BorderSlate)
+                                    .clickable { risk = level }
+                                    .padding(vertical = 12.dp)
+                                    .testTag("risk_btn_$level"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = level,
+                                    color = if (selected) Color.White else TextGrey,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = when(risk) {
+                            "Conservative" -> "Preserves capital. Recommends stable majors (EUR/USD, USD/CHF) and acts only on high-confidence triggers."
+                            "Moderate" -> "Balanced returns. Accepts moderate technical index fluctuations with regular range adjustments."
+                            else -> "Breakout prioritization. Embraces volatility across GBP, JPY, and commodity pairings for rapid entries."
+                        },
+                        color = TextGrey,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        }
+
+        // Trading Experience Option
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "2. Trading Experience Level",
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val experiences = listOf("Beginner", "Intermediate", "Advanced")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        experiences.forEach { exp ->
+                            val selected = experience == exp
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (selected) NeonCyan else BorderSlate)
+                                    .clickable { experience = exp }
+                                    .padding(vertical = 12.dp)
+                                    .testTag("exp_btn_$exp"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = exp,
+                                    color = if (selected) CosmicBlack else TextGrey,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Preferred Pairs Checklist
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "3. Preferred Pairs",
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    pairs.forEach { pair ->
+                        val checked = selectedPairs.contains(pair)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (checked) selectedPairs.remove(pair) else selectedPairs.add(pair)
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = checked,
+                                onCheckedChange = {
+                                    if (checked) selectedPairs.remove(pair) else selectedPairs.add(pair)
+                                },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = ElectricBlue,
+                                    checkmarkColor = TextWhite
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(pair, color = TextWhite, fontSize = 14.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Button(
+                onClick = {
+                    viewModel.updateRiskProfile(
+                        riskLevel = risk,
+                        experienceLevel = experience,
+                        preferredPairs = selectedPairs.joinToString(","),
+                        aiPreferences = "Technical & News Sentiment"
+                    )
+                    onFinish()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp)
+                    .height(50.dp)
+                    .testTag("onboarding_finish_btn"),
+                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "Launch Platform",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+// --- Dashboard Screen ---
+
+@Composable
+fun DashboardScreen(
+    viewModel: ForexViewModel,
+    onPairSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val marketState by viewModel.marketUiState.collectAsState()
+    val recommendationState by viewModel.recommendationUiState.collectAsState()
+    val isRealKey by viewModel.isRealApiKeyConfigured.collectAsState()
+    val profile by viewModel.userProfile.collectAsState()
+
+    // Real-time linkages with Gemini recommendation outputs
+    val firstRec = (recommendationState as? RecommendationUiState.Success)?.report?.recommendedPairs?.firstOrNull()
+    val displaySymbol = firstRec?.pair ?: "EUR/USD"
+    val displayAction = firstRec?.suggestedAction ?: "STRONG BUY"
+    val confidencePercent = firstRec?.confidence ?: 87
+
+    val marketPairs = (marketState as? MarketUiState.Success)?.pairs ?: emptyList()
+    val pairData = marketPairs.find { it.symbol == displaySymbol }
+    val displayPrice = pairData?.currentPrice?.let { String.format("%.4f", it) } ?: "1.0842"
+    val displayChange = pairData?.dailyChangePercent ?: 0.24
+    val isUp = displayChange >= 0
+
+    val overallSummary = when (val state = recommendationState) {
+        is RecommendationUiState.Success -> state.report.overallSummary
+        is RecommendationUiState.Loading -> "Querying Gemini 3.5 Flash Model... Analyzing technical trend patterns and market-wide sentiment..."
+        is RecommendationUiState.Error -> "Unable to process dynamic API metrics. Running fallback analytics: ${state.message}"
+        else -> "Tap the evaluation trigger to generate a dynamic structured AI recommendation report aligned with your ${profile.riskLevel.lowercase()} risk tolerance."
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(CosmicBlack)
+    ) {
+        // Beautiful Geometric Terminal Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(ElectricBlue),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.TrendingUp,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Column {
+                    Text(
+                        text = "FxAI Terminal",
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        letterSpacing = (-0.5).sp
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(BullishGreen)
+                        )
+                        Text(
+                            text = "Market Live",
+                            color = TextGrey,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            // User Profile Risk Badge
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(TagBackground)
+                    .border(1.dp, BorderSlate, RoundedCornerShape(20.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        tint = ElectricBlue,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = profile.riskLevel,
+                        color = TextWhite,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        // Warning banner for simulation mode
+        if (!isRealKey) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFF9100).copy(alpha = 0.12f)),
+                border = BorderStroke(1.dp, Color(0xFFFF9100).copy(alpha = 0.3f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = "Simulation Active",
+                        tint = Color(0xFFFF9100),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Demo Mode: Running offline AI indicators. Add GEMINI_API_KEY in Secrets for live processing.",
+                        color = TextWhite,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        }
+
+        // Master Summary Dashboard Card in SpecCardBlue
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            border = BorderStroke(1.dp, GridLineSlate.copy(alpha = 0.5f))
+        ) {
+            val isLight = MaterialTheme.colorScheme.background == LightBgColor
+            Column(
+                modifier = Modifier
+                    .background(
+                        androidx.compose.ui.graphics.Brush.linearGradient(
+                            colors = if (isLight) {
+                                listOf(Color(0xFFDCEBFF), Color(0xFFF3F8FF))
+                            } else {
+                                listOf(Color(0xFF1B243B), Color(0xFF111827))
+                            }
+                        )
+                    )
+                    .padding(16.dp)
+            ) {
+                // Header of Recommendation Card
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(ElectricBlue)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "TOP RECOMMENDATION",
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                        if (recommendationState is RecommendationUiState.Loading) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(12.dp),
+                                strokeWidth = 1.5.dp,
+                                color = ElectricBlue
+                            )
+                        }
+                    }
+
+                    // Re-evaluate button with nice icon
+                    IconButton(
+                        onClick = { viewModel.generateAIRecommendations() },
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.6f))
+                            .testTag("re_evaluate_ai_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Ask Gemini",
+                            tint = ElectricBlue,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Core Asset & Stats Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = displaySymbol,
+                            color = Color(0xFF001E2F),
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Action: $displayAction",
+                            color = if (displayAction.contains("SELL")) BearishRed else BullishGreen,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = displayPrice,
+                            color = Color(0xFF001E2F),
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (isUp) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                contentDescription = null,
+                                tint = if (isUp) BullishGreen else BearishRed,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = "${if (isUp) "+" else ""}${String.format("%.2f", displayChange)}%",
+                                color = if (isUp) BullishGreen else BearishRed,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Confidence Bar
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "AI CONFIDENCE INDICATOR",
+                            color = TextGrey,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "$confidencePercent%",
+                            color = ElectricBlue,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { confidencePercent / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = ElectricBlue,
+                        trackColor = Color.White.copy(alpha = 0.5f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Summary Rationale text
+                Text(
+                    text = overallSummary,
+                    color = Color(0xFF001E2F).copy(alpha = 0.85f),
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+
+                if (recommendationState is RecommendationUiState.Success) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = (recommendationState as RecommendationUiState.Success).report.disclaimer,
+                        color = TextGrey.copy(alpha = 0.7f),
+                        fontSize = 9.sp,
+                        lineHeight = 11.sp
+                    )
+                }
+            }
+        }
+
+        // Live Quotes Ticker header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Live Ticker Indexes",
+                color = TextGrey,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(BullishGreen)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Simulating 10s Feeds", color = TextGrey, fontSize = 10.sp)
+            }
+        }
+
+        // Live Rate Cards
+        when (val state = marketState) {
+            is MarketUiState.Loading -> {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = ElectricBlue)
+                }
+            }
+            is MarketUiState.Error -> {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(state.message, color = BearishRed)
+                }
+            }
+            is MarketUiState.Success -> {
+                LazyColumn(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(state.pairs) { pair ->
+                        ForexPairRowCard(
+                            pair = pair,
+                            isWatchlisted = viewModel.watchlistSymbols.collectAsState().value.contains(pair.symbol),
+                            onWatchlistToggle = { viewModel.toggleWatchlist(pair.symbol) },
+                            onClick = { onPairSelected(pair.symbol) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ForexPairRowCard(
+    pair: ForexPairData,
+    isWatchlisted: Boolean,
+    onWatchlistToggle: () -> Unit,
+    onClick: () -> Unit
+) {
+    val isUp = pair.dailyChangePercent >= 0
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .testTag("pair_card_${pair.symbol.replace("/", "_")}"),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = BorderStroke(1.dp, BorderSlate)
+    ) {
+        val isLight = MaterialTheme.colorScheme.background == LightBgColor
+        Row(
+            modifier = Modifier
+                .background(
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        colors = if (isLight) {
+                            listOf(Color(0xFFFFFFFF), Color(0xFFF4F7FC))
+                        } else {
+                            listOf(Color(0xFF131926), Color(0xFF0D121F))
+                        }
+                    )
+                )
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1.5f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = pair.symbol,
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    IconButton(
+                        onClick = onWatchlistToggle,
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isWatchlisted) Icons.Filled.Star else Icons.Filled.StarBorder,
+                            contentDescription = "Watchlist",
+                            tint = if (isWatchlisted) NeonCyan else TextGrey,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = pair.name,
+                    color = TextGrey,
+                    fontSize = 11.sp
+                )
+            }
+
+            // Price Indicators
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    text = String.format("%.4f", pair.currentPrice),
+                    color = TextWhite,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (isUp) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                        contentDescription = "Trend direction",
+                        tint = if (isUp) BullishGreen else BearishRed,
+                        modifier = Modifier.size(10.dp)
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(
+                        text = "${if (isUp) "+" else ""}${String.format("%.2f", pair.dailyChangePercent)}%",
+                        color = if (isUp) BullishGreen else BearishRed,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            // Quick summary badge
+            val recAction = when {
+                pair.dailyChangePercent > 0.05 -> "BUY"
+                pair.dailyChangePercent < -0.05 -> "SELL"
+                else -> "HOLD"
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(
+                        when (recAction) {
+                            "BUY" -> BullishGreen.copy(alpha = 0.15f)
+                            "SELL" -> BearishRed.copy(alpha = 0.15f)
+                            else -> TextGrey.copy(alpha = 0.15f)
+                        }
+                    )
+                    .border(
+                        1.dp,
+                        when (recAction) {
+                            "BUY" -> BullishGreen
+                            "SELL" -> BearishRed
+                            else -> TextGrey
+                        },
+                        RoundedCornerShape(6.dp)
+                    )
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = recAction,
+                    color = when (recAction) {
+                        "BUY" -> BullishGreen
+                        "SELL" -> BearishRed
+                        else -> TextWhite
+                    },
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+// --- Detail Screen ---
+
+@Composable
+fun DetailScreen(
+    symbol: String,
+    viewModel: ForexViewModel,
+    onBack: () -> Unit,
+    onNavigateToChat: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val pairs by viewModel.pairsFlow.collectAsState()
+    
+    // Fallback if direct live collection isn't seeded yet
+    val pairData = remember(pairs, symbol) {
+        pairs.firstOrNull { it.symbol == symbol } ?: com.example.data.forex.ForexEngine.getPairData(symbol)
+    }
+
+    val isWatchlisted = viewModel.watchlistSymbols.collectAsState().value.contains(symbol)
+    val recommendationState by viewModel.recommendationUiState.collectAsState()
+
+    // Grab matching recommendation if exists in active state
+    val specificRec = remember(recommendationState, symbol) {
+        if (recommendationState is RecommendationUiState.Success) {
+            (recommendationState as RecommendationUiState.Success).report.recommendedPairs.firstOrNull { it.pair == symbol }
+        } else {
+            null
+        }
+    }
+
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(CosmicBlack)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Navigation Header Row
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack, modifier = Modifier.testTag("detail_back_btn")) {
+                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(text = pairData.symbol, color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    Text(text = pairData.name, color = TextGrey, fontSize = 12.sp)
+                }
+                IconButton(onClick = { viewModel.toggleWatchlist(symbol) }) {
+                    Icon(
+                        imageVector = if (isWatchlisted) Icons.Filled.Star else Icons.Filled.StarBorder,
+                        contentDescription = "Watchlist toggle",
+                        tint = if (isWatchlisted) NeonCyan else TextWhite
+                    )
+                }
+            }
+        }
+
+        // Live Rate Header Card
+        item {
+            val isUp = pairData.dailyChangePercent >= 0
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = String.format("%.4f", pairData.currentPrice),
+                        color = TextWhite,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (isUp) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                            contentDescription = "Trend direction",
+                            tint = if (isUp) BullishGreen else BearishRed,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${if (isUp) "+" else ""}${String.format("%.2f", pairData.dailyChangePercent)}%",
+                            color = if (isUp) BullishGreen else BearishRed,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Volatility Gauge
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Volatility", color = TextGrey, fontSize = 11.sp)
+                    Text(
+                        text = "${String.format("%.1f", pairData.volatilityScore)}/10",
+                        color = if (pairData.volatilityScore > 7.0) BearishRed else NeonCyan,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        // Custom Interactive Chart
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(260.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("30-Day Historical Candle Index", color = TextWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    ForexChart(history = pairData.history, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+
+        // Gemini AI Recommendation Block
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Gemini Recommendation Report",
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (specificRec != null) {
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            when (specificRec.suggestedAction) {
+                                                "BUY" -> BullishGreen.copy(alpha = 0.15f)
+                                                "SELL" -> BearishRed.copy(alpha = 0.15f)
+                                                "WATCH" -> NeonCyan.copy(alpha = 0.15f)
+                                                else -> TextGrey.copy(alpha = 0.15f)
+                                            }
+                                        )
+                                        .border(
+                                            1.dp,
+                                            when (specificRec.suggestedAction) {
+                                                "BUY" -> BullishGreen
+                                                "SELL" -> BearishRed
+                                                "WATCH" -> NeonCyan
+                                                else -> TextGrey
+                                            },
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "Action: ${specificRec.suggestedAction}",
+                                        color = when (specificRec.suggestedAction) {
+                                            "BUY" -> BullishGreen
+                                            "SELL" -> BearishRed
+                                            "WATCH" -> NeonCyan
+                                            else -> TextWhite
+                                        },
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                Text(
+                                    text = "Confidence: ${specificRec.confidence}%",
+                                    color = TextWhite,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Rationale:",
+                                color = TextGrey,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = specificRec.rationale,
+                                color = TextWhite,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Key News Indicators Evaluated:",
+                                color = TextGrey,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            specificRec.keyNews.forEach { topic ->
+                                Row(
+                                    modifier = Modifier.padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(NeonCyan)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(topic, color = TextWhite, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    } else {
+                        // Generate dynamic local preview recommendation
+                        val localSimRec = remember(pairData) {
+                            com.example.data.api.GeminiClient.generateMockAIResponse(
+                                pairsData = listOf(pairData),
+                                riskLevel = viewModel.userProfile.value.riskLevel,
+                                experienceLevel = viewModel.userProfile.value.experience
+                            ).recommendedPairs.firstOrNull()
+                        }
+
+                        if (localSimRec != null) {
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                when (localSimRec.suggestedAction) {
+                                                    "BUY" -> BullishGreen.copy(alpha = 0.15f)
+                                                    "SELL" -> BearishRed.copy(alpha = 0.15f)
+                                                    "WATCH" -> NeonCyan.copy(alpha = 0.15f)
+                                                    else -> TextGrey.copy(alpha = 0.15f)
+                                                }
+                                            )
+                                            .border(
+                                                1.dp,
+                                                when (localSimRec.suggestedAction) {
+                                                    "BUY" -> BullishGreen
+                                                    "SELL" -> BearishRed
+                                                    "WATCH" -> NeonCyan
+                                                    else -> TextGrey
+                                                },
+                                                RoundedCornerShape(8.dp)
+                                            )
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = "Action: ${localSimRec.suggestedAction}",
+                                            color = when (localSimRec.suggestedAction) {
+                                                "BUY" -> BullishGreen
+                                                "SELL" -> BearishRed
+                                                "WATCH" -> NeonCyan
+                                                else -> TextWhite
+                                            },
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+
+                                    Text(
+                                        text = "Confidence: ${localSimRec.confidence}%",
+                                        color = TextWhite,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Simulated Analysis:",
+                                    color = TextGrey,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = localSimRec.rationale,
+                                    color = TextWhite,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Key Topics:",
+                                    color = TextGrey,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                localSimRec.keyNews.forEach { topic ->
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .clip(RoundedCornerShape(3.dp))
+                                                .background(ElectricBlue)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(topic, color = TextWhite, fontSize = 12.sp)
+                                    }
+                                }
+                                
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(
+                                    onClick = { viewModel.generateAIRecommendations() },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                                ) {
+                                    Text("Analyze with Live Gemini API")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // News Snippets
+        item {
+            Text(
+                text = "Market News Snippets",
+                color = TextGrey,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+        }
+
+        items(pairData.news) { newsTitle ->
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Announcement,
+                        contentDescription = "News",
+                        tint = NeonCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = newsTitle,
+                        color = TextWhite,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+        }
+
+        // Ask assistant trigger
+        item {
+            Button(
+                onClick = { onNavigateToChat(symbol) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp)
+                    .height(50.dp)
+                    .testTag("detail_chat_btn"),
+                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Chat icon")
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Discuss ${symbol} with AI Assistant")
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+// --- AI Chat Screen ---
+
+@Composable
+fun ChatScreen(
+    preloadedPair: String?,
+    viewModel: ForexViewModel,
+    modifier: Modifier = Modifier
+) {
+    val chatLogs by viewModel.chatHistory.collectAsState()
+    val loading by viewModel.chatLoading.collectAsState()
+    val profile by viewModel.userProfile.collectAsState()
+
+    var textInput by remember { mutableStateOf("") }
+    val scrollState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
+    // Rapid questions chips
+    val chipOptions = listOf(
+        "Why do you recommend EUR/USD?",
+        "Explain volatility indices today.",
+        "Which pair fits a conservative style?"
+    )
+
+    // Scroll to bottom when logs update
+    LaunchedEffect(chatLogs.size, loading) {
+        if (chatLogs.isNotEmpty()) {
+            scrollState.animateScrollToItem(chatLogs.size - 1)
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(CosmicBlack)
+            .padding(16.dp)
+    ) {
+        // Chat Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("AI Trading Assistant", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(
+                    text = if (preloadedPair != null) "Discussing $preloadedPair • Strategy: ${profile.riskLevel}" else "Strategy Tutor • ${profile.riskLevel}",
+                    color = TextGrey,
+                    fontSize = 12.sp
+                )
+            }
+            IconButton(
+                onClick = { viewModel.clearChat() },
+                modifier = Modifier.testTag("clear_chat_btn")
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = "Clear Chat", tint = TextGrey)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Chat logs bubble list
+        LazyColumn(
+            state = scrollState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (chatLogs.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillParentMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Chat,
+                                contentDescription = "Zen chat logo",
+                                tint = ElectricBlue.copy(alpha = 0.5f),
+                                modifier = Modifier.size(56.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Ask anything about trading strategies, volatility bounds, or daily currency breakdowns.",
+                                color = TextGrey,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(chatLogs) { log ->
+                    // User bubble
+                    ChatBubble(text = log.first, isUser = true)
+                    
+                    // Assistant bubble (only if populated)
+                    if (log.second.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        ChatBubble(text = log.second, isUser = false)
+                    }
+                }
+            }
+
+            if (loading) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = ElectricBlue)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Gemini is composing analysis...", color = TextGrey, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
+        // Rapid starter chips
+        if (chatLogs.isEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                chipOptions.forEach { opt ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CosmicCard)
+                            .border(1.dp, BorderSlate, RoundedCornerShape(8.dp))
+                            .clickable { viewModel.sendChatMessage(opt, preloadedPair) }
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = opt,
+                            color = TextWhite,
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Input row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextField(
+                value = textInput,
+                onValueChange = { textInput = it },
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("chat_input_field"),
+                placeholder = { Text("Ask about currency models...", color = TextGrey, fontSize = 13.sp) },
+                colors = TextFieldDefaults.colors(
+                    focusedTextColor = TextWhite,
+                    unfocusedTextColor = TextWhite,
+                    focusedContainerColor = CosmicCard,
+                    unfocusedContainerColor = CosmicCard,
+                    disabledContainerColor = CosmicCard,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent
+                ),
+                shape = RoundedCornerShape(12.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = {
+                    if (textInput.isNotBlank()) {
+                        viewModel.sendChatMessage(textInput, preloadedPair)
+                        textInput = ""
+                    }
+                },
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(ElectricBlue)
+                    .size(48.dp)
+                    .testTag("chat_send_btn")
+            ) {
+                Icon(Icons.Default.Send, contentDescription = "Send", tint = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+fun ChatBubble(text: String, isUser: Boolean) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(
+                RoundedCornerShape(
+                    topStart = 12.dp,
+                    topEnd = 12.dp,
+                    bottomStart = if (isUser) 12.dp else 0.dp,
+                    bottomEnd = if (isUser) 0.dp else 12.dp
+                )
+            )
+            .background(if (isUser) ElectricBlue else CosmicCard)
+            .border(
+                width = 1.dp,
+                color = if (isUser) ElectricBlue else BorderSlate,
+                shape = RoundedCornerShape(
+                    topStart = 12.dp,
+                    topEnd = 12.dp,
+                    bottomStart = if (isUser) 12.dp else 0.dp,
+                    bottomEnd = if (isUser) 0.dp else 12.dp
+                )
+            )
+            .padding(12.dp)
+            .widthIn(max = 280.dp)
+        ) {
+            Text(
+                text = text,
+                color = if (isUser) Color.White else TextWhite,
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+        }
+    }
+}
+
+// --- Watchlist Screen ---
+
+@Composable
+fun WatchlistScreen(
+    viewModel: ForexViewModel,
+    onPairSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val marketState by viewModel.marketUiState.collectAsState()
+    val watchlist by viewModel.watchlistSymbols.collectAsState()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(CosmicBlack)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Star, contentDescription = "Favorites", tint = NeonCyan, modifier = Modifier.size(28.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            Text("Your Watchlist Indices", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        }
+
+        if (watchlist.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Filled.StarBorder,
+                        contentDescription = "Empty Watchlist",
+                        tint = TextGrey.copy(alpha = 0.5f),
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Your watchlist is empty.",
+                        color = TextWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Tap the star icon beside currency labels on the dashboard to pin favorites here for easy tracking.",
+                        color = TextGrey,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        } else {
+            when (val state = marketState) {
+                is MarketUiState.Loading -> {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = ElectricBlue)
+                    }
+                }
+                is MarketUiState.Error -> {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text(state.message, color = BearishRed)
+                    }
+                }
+                is MarketUiState.Success -> {
+                    val filteredPairs = remember(state.pairs, watchlist) {
+                        state.pairs.filter { watchlist.contains(it.symbol) }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(filteredPairs) { pair ->
+                            ForexPairRowCard(
+                                pair = pair,
+                                isWatchlisted = true,
+                                onWatchlistToggle = { viewModel.toggleWatchlist(pair.symbol) },
+                                onClick = { onPairSelected(pair.symbol) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// --- Settings Screen ---
+
+@Composable
+fun SettingsScreen(
+    viewModel: ForexViewModel,
+    onResetOnboarding: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val profile by viewModel.userProfile.collectAsState()
+    val isRealKey by viewModel.isRealApiKeyConfigured.collectAsState()
+
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(CosmicBlack)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = ElectricBlue, modifier = Modifier.size(28.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Settings & Security", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+            }
+        }
+
+        // Display Theme Preference Switcher Card
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Display Mode", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Set your preferred visual aesthetic for the platform.", color = TextGrey, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("Light", "Dark", "Auto").forEach { mode ->
+                            val isSelected = profile.themeMode == mode
+                            Button(
+                                onClick = { viewModel.updateThemeMode(mode) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .testTag("theme_btn_$mode"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelected) ElectricBlue else BorderSlate,
+                                    contentColor = if (isSelected) Color.White else TextWhite
+                                ),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(mode, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // External API Integration Settings Card
+        item {
+            var extUrl by remember(profile.externalApiUrl) { mutableStateOf(profile.externalApiUrl) }
+            var extKey by remember(profile.externalApiKey) { mutableStateOf(profile.externalApiKey) }
+            
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Dns, contentDescription = "API Server", tint = ElectricBlue, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("External Financial API", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Integrate custom market providers or external news endpoints.", color = TextGrey, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    OutlinedTextField(
+                        value = extUrl,
+                        onValueChange = { extUrl = it },
+                        label = { Text("API Endpoint URL", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth().testTag("api_url_input"),
+                        textStyle = TextStyle(color = TextWhite, fontSize = 13.sp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ElectricBlue,
+                            unfocusedBorderColor = BorderSlate,
+                            focusedLabelColor = ElectricBlue,
+                            unfocusedLabelColor = TextGrey
+                        ),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    OutlinedTextField(
+                        value = extKey,
+                        onValueChange = { extKey = it },
+                        label = { Text("API Credential Key", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth().testTag("api_key_input"),
+                        textStyle = TextStyle(color = TextWhite, fontSize = 13.sp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ElectricBlue,
+                            unfocusedBorderColor = BorderSlate,
+                            focusedLabelColor = ElectricBlue,
+                            unfocusedLabelColor = TextGrey
+                        ),
+                        singleLine = true
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Button(
+                        onClick = { 
+                            viewModel.updateExternalApiSettings(extKey, extUrl)
+                            android.widget.Toast.makeText(context, "Credentials saved successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(42.dp).testTag("save_api_settings_btn"),
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                    ) {
+                        Text("Save Credentials", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // Risk Profile details Card
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Risk Profiling Profile", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Risk Tolerance:", color = TextGrey, fontSize = 13.sp)
+                        Text(profile.riskLevel, color = ElectricBlue, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Experience level:", color = TextGrey, fontSize = 13.sp)
+                        Text(profile.experience, color = NeonCyan, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Preferred index lists:", color = TextGrey, fontSize = 13.sp)
+                        Text(profile.preferredPairs, color = TextWhite, fontSize = 11.sp, maxLines = 1)
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = onResetOnboarding,
+                        modifier = Modifier.fillMaxWidth().testTag("reset_profile_btn"),
+                        colors = ButtonDefaults.buttonColors(containerColor = BorderSlate)
+                    ) {
+                        Text("Update Risk Profile Settings")
+                    }
+                }
+            }
+        }
+
+        // Mock Ticker alert Notifications
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Local Notifications Ticker", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("Receive alert popups on significant daily rate shifts.", color = TextGrey, fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = profile.notificationsEnabled,
+                        onCheckedChange = { viewModel.toggleNotifications(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ElectricBlue,
+                            checkedTrackColor = ElectricBlue.copy(alpha = 0.4f)
+                        )
+                    )
+                }
+            }
+        }
+
+        // Required mandated security warnings
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("API Credentials Status", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(if (isRealKey) BullishGreen else Color(0xFFFF9100))
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isRealKey) "Gemini API Active (Connected)" else "Simulation Engine (Using Fallbacks)",
+                            color = if (isRealKey) BullishGreen else Color(0xFFFF9100),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = "Security Warning: I have included your API keys in the generated APK file for this prototype. Please be aware that Android APKs can be easily decompiled, and these keys can be extracted by anyone who has access to the file. Do not share this APK file publicly or with unauthorized individuals to prevent potential misuse.",
+                        color = TextGrey,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                        textAlign = TextAlign.Justify
+                    )
+                }
+            }
+        }
+
+        // Regulatory standard disclaimer
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Gavel, contentDescription = "Disclaimer", tint = TextGrey, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Regulatory Standard Disclaimer", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "This platform does not provide actual financial advice. Every analysis generated by the AI is for educational and informational purposes only. Currency trading involves severe exposure to leverage and volatility, and you remain solely responsible for your own capital decisions. Past performance does not guarantee future indicators.",
+                        color = TextGrey,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        textAlign = TextAlign.Justify
+                    )
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(48.dp))
+        }
+    }
+}
+
+// --- Google Search Screen ---
+
+@Composable
+fun SearchScreen(
+    viewModel: ForexViewModel,
+    modifier: Modifier = Modifier
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    var currentUrl by remember { mutableStateOf<String?>(null) }
+    var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+    var isLoadingWeb by remember { mutableStateOf(false) }
+
+    val presetSuggestions = listOf(
+        "EUR/USD trend news",
+        "Fed Interest Rates live",
+        "DXY Index live chart",
+        "Forex daily market analysis",
+        "Gemini AI Forex prediction"
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(CosmicBlack)
+    ) {
+        // Search Screen Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(ElectricBlue),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Public,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Column {
+                Text(
+                    text = "Google Market Search",
+                    color = TextWhite,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    letterSpacing = (-0.5).sp
+                )
+                Text(
+                    text = "Live macroeconomic news & web tracking",
+                    color = TextGrey,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        // Search Input Bar Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            colors = CardDefaults.cardColors(containerColor = CosmicCard),
+            border = BorderStroke(1.dp, BorderSlate),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search Google for Forex news...", color = TextGrey, fontSize = 14.sp) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = TextGrey
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear",
+                                    tint = TextGrey
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("google_search_input"),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextWhite,
+                        unfocusedTextColor = TextWhite,
+                        focusedBorderColor = ElectricBlue,
+                        unfocusedBorderColor = BorderSlate,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Button(
+                    onClick = {
+                        if (searchQuery.trim().isNotEmpty()) {
+                            val encoded = URLEncoder.encode(searchQuery.trim(), "UTF-8")
+                            currentUrl = "https://www.google.com/search?q=$encoded"
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    modifier = Modifier
+                        .height(52.dp)
+                        .testTag("google_search_btn")
+                ) {
+                    Text("Search", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            }
+        }
+
+        // Suggestion Chips
+        if (currentUrl == null) {
+            Text(
+                text = "POPULAR FOREX SEARCHES",
+                color = TextGrey,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp)
+            )
+
+            // Dynamic horizontal container for popular searches (wrapped with single-line or row padding)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                presetSuggestions.take(3).forEach { suggestion ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(TagBackground)
+                            .border(1.dp, BorderSlate, RoundedCornerShape(20.dp))
+                            .clickable {
+                                searchQuery = suggestion
+                                val encoded = URLEncoder.encode(suggestion, "UTF-8")
+                                currentUrl = "https://www.google.com/search?q=$encoded"
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = suggestion,
+                            color = TextWhite,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Welcome State
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Public,
+                        contentDescription = "Search Google",
+                        tint = ElectricBlue.copy(alpha = 0.5f),
+                        modifier = Modifier.size(72.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Integrated Web Search Terminal",
+                        color = TextWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Instantly explore global live markets, currency forums, FOMC schedules, and expert financial analysis directly from the Google ecosystem inside this terminal.",
+                        color = TextGrey,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+            }
+        } else {
+            // Browser toolbar & Webview
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(CosmicCard)
+                    .border(1.dp, BorderSlate)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(
+                        onClick = {
+                            if (webViewInstance?.canGoBack() == true) {
+                                webViewInstance?.goBack()
+                            }
+                        },
+                        enabled = webViewInstance?.canGoBack() == true
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = if (webViewInstance?.canGoBack() == true) ElectricBlue else TextGrey.copy(alpha = 0.4f)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            if (webViewInstance?.canGoForward() == true) {
+                                webViewInstance?.goForward()
+                            }
+                        },
+                        enabled = webViewInstance?.canGoForward() == true
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = "Forward",
+                            tint = if (webViewInstance?.canGoForward() == true) ElectricBlue else TextGrey.copy(alpha = 0.4f)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            webViewInstance?.reload()
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Reload",
+                            tint = ElectricBlue
+                        )
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(
+                        onClick = {
+                            currentUrl = null
+                            searchQuery = ""
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Home,
+                            contentDescription = "Home",
+                            tint = ElectricBlue
+                        )
+                    }
+                }
+            }
+
+            if (isLoadingWeb) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = ElectricBlue,
+                    trackColor = Color.Transparent
+                )
+            }
+
+            AndroidView(
+                factory = { context ->
+                    WebView(context).apply {
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                super.onPageStarted(view, url, favicon)
+                                isLoadingWeb = true
+                            }
+
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                super.onPageFinished(view, url)
+                                isLoadingWeb = false
+                            }
+                        }
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.builtInZoomControls = true
+                        settings.displayZoomControls = false
+                        webViewInstance = this
+                        currentUrl?.let { loadUrl(it) }
+                    }
+                },
+                update = { webView ->
+                    if (webView.url != currentUrl && currentUrl != null) {
+                        currentUrl?.let { webView.loadUrl(it) }
+                    }
+                    webViewInstance = webView
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            )
+        }
+    }
+}

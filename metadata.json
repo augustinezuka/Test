@@ -1,0 +1,6 @@
+{
+  "name": "Forex AI",
+  "description": "A high-fidelity Forex analysis platform powered by Gemini AI, featuring risk profiling, charts, sentiment tracking, watchlist, and custom recommendations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
