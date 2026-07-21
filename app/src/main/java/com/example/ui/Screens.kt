@@ -269,6 +269,7 @@ fun OnboardingScreen(
 fun DashboardScreen(
     viewModel: ForexViewModel,
     onPairSelected: (String) -> Unit,
+    onNavigateToChat: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val marketState by viewModel.marketUiState.collectAsState()
@@ -587,58 +588,116 @@ fun DashboardScreen(
             }
         }
 
-        // Live Quotes Ticker header
+        // Sub-Tab Selector Segmented Row
+        var activeSubTab by remember { mutableStateOf("Live Rates") } // "Live Rates", "Calendar", "Calculator"
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(CosmicCard)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                text = "Live Ticker Indexes",
-                color = TextGrey,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
+            listOf("Live Rates", "Calendar", "Calculator").forEach { tab ->
+                val isSelected = activeSubTab == tab
+                Button(
+                    onClick = { activeSubTab = tab },
                     modifier = Modifier
-                        .size(8.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(BullishGreen)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Simulating 10s Feeds", color = TextGrey, fontSize = 10.sp)
+                        .weight(1f)
+                        .height(34.dp)
+                        .testTag("dashboard_sub_tab_${tab.lowercase().replace(" ", "_")}"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isSelected) ElectricBlue else Color.Transparent,
+                        contentColor = if (isSelected) Color.White else TextGrey
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text(
+                        text = tab,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
-        // Live Rate Cards
-        when (val state = marketState) {
-            is MarketUiState.Loading -> {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = ElectricBlue)
-                }
-            }
-            is MarketUiState.Error -> {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Text(state.message, color = BearishRed)
-                }
-            }
-            is MarketUiState.Success -> {
-                LazyColumn(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Dynamic Sub-Feature Render Block
+        when (activeSubTab) {
+            "Live Rates" -> {
+                // Live Quotes Ticker header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    items(state.pairs) { pair ->
-                        ForexPairRowCard(
-                            pair = pair,
-                            isWatchlisted = viewModel.watchlistSymbols.collectAsState().value.contains(pair.symbol),
-                            onWatchlistToggle = { viewModel.toggleWatchlist(pair.symbol) },
-                            onClick = { onPairSelected(pair.symbol) }
+                    Text(
+                        text = "Live Ticker Indexes",
+                        color = TextGrey,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(BullishGreen)
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Simulating 10s Feeds", color = TextGrey, fontSize = 10.sp)
                     }
+                }
+
+                // Live Rate Cards
+                when (val state = marketState) {
+                    is MarketUiState.Loading -> {
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = ElectricBlue)
+                        }
+                    }
+                    is MarketUiState.Error -> {
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            Text(state.message, color = BearishRed)
+                        }
+                    }
+                    is MarketUiState.Success -> {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(state.pairs) { pair ->
+                                ForexPairRowCard(
+                                    pair = pair,
+                                    isWatchlisted = viewModel.watchlistSymbols.collectAsState().value.contains(pair.symbol),
+                                    onWatchlistToggle = { viewModel.toggleWatchlist(pair.symbol) },
+                                    onClick = { onPairSelected(pair.symbol) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            "Calendar" -> {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    EconomicCalendarView(
+                        onNavigateToChat = { query ->
+                            viewModel.sendChatMessage(query)
+                            onNavigateToChat()
+                        }
+                    )
+                }
+            }
+            "Calculator" -> {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    PositionCalculatorView()
                 }
             }
         }
@@ -1429,83 +1488,299 @@ fun WatchlistScreen(
 ) {
     val marketState by viewModel.marketUiState.collectAsState()
     val watchlist by viewModel.watchlistSymbols.collectAsState()
+    val alerts by viewModel.priceAlerts.collectAsState()
+
+    var alertSymbol by remember { mutableStateOf("EUR/USD") }
+    var alertPrice by remember { mutableStateOf("1.0900") }
+    var alertIsAbove by remember { mutableStateOf(true) }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(CosmicBlack)
     ) {
+        // Watchlist Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Filled.Star, contentDescription = "Favorites", tint = NeonCyan, modifier = Modifier.size(28.dp))
+            Icon(Icons.Filled.Star, contentDescription = "Favorites", tint = NeonCyan, modifier = Modifier.size(26.dp))
             Spacer(modifier = Modifier.width(12.dp))
-            Text("Your Watchlist Indices", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+            Text("Watchlist & Active Alerts", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
         }
 
-        if (watchlist.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Filled.StarBorder,
-                        contentDescription = "Empty Watchlist",
-                        tint = TextGrey.copy(alpha = 0.5f),
-                        modifier = Modifier.size(64.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "Your watchlist is empty.",
-                        color = TextWhite,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Tap the star icon beside currency labels on the dashboard to pin favorites here for easy tracking.",
-                        color = TextGrey,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Price Alerts Manager Section
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                    border = BorderStroke(1.dp, BorderSlate),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Notifications, contentDescription = "Alerts", tint = NeonCyan, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Set Custom Price Alerts", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Selection Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Symbol selector row
+                            Column(modifier = Modifier.weight(1.2f)) {
+                                Text("Currency Pair", color = TextGrey, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(BorderSlate).padding(2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    listOf("EUR/USD", "GBP/USD", "USD/JPY").forEach { p ->
+                                        val isSel = alertSymbol == p
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (isSel) ElectricBlue else Color.Transparent)
+                                                .clickable { alertSymbol = p }
+                                                .padding(vertical = 6.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(p.replace("/USD", "").replace("USD/", ""), color = if (isSel) Color.White else TextWhite, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Price target input
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Target Price", color = TextGrey, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                OutlinedTextField(
+                                    value = alertPrice,
+                                    onValueChange = { alertPrice = it },
+                                    modifier = Modifier.fillMaxWidth().testTag("alert_price_input"),
+                                    textStyle = TextStyle(color = TextWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ElectricBlue,
+                                        unfocusedBorderColor = BorderSlate,
+                                        focusedLabelColor = ElectricBlue,
+                                        unfocusedLabelColor = TextGrey
+                                    ),
+                                    singleLine = true
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Direction selector & ADD button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Condition:", color = TextGrey, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                Row(
+                                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(BorderSlate).padding(2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    listOf(true, false).forEach { dir ->
+                                        val isSelected = alertIsAbove == dir
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (isSelected) ElectricBlue else Color.Transparent)
+                                                .clickable { alertIsAbove = dir }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(if (dir) "Above (>=)" else "Below (<=)", color = if (isSelected) Color.White else TextWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    val pr = alertPrice.toDoubleOrNull()
+                                    if (pr != null) {
+                                        viewModel.addPriceAlert(alertSymbol, pr, alertIsAbove)
+                                        android.widget.Toast.makeText(context, "Alert configured successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        android.widget.Toast.makeText(context, "Please enter a valid target price.", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.height(34.dp).testTag("create_alert_btn"),
+                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                                    Text("Add Alert", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        // Alerts Active List
+                        if (alerts.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            HorizontalDivider(color = BorderSlate.copy(alpha = 0.5f))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Active Price Alerts", color = TextGrey, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                alerts.forEach { alert ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(BorderSlate.copy(alpha = 0.3f))
+                                            .border(1.dp, BorderSlate.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Icon(
+                                                imageVector = if (alert.isTriggered) Icons.Default.NotificationsActive else Icons.Default.Notifications,
+                                                contentDescription = null,
+                                                tint = if (alert.isTriggered) BearishRed else if (alert.isEnabled) NeonCyan else TextGrey,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Column {
+                                                Text(alert.symbol, color = TextWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Text(
+                                                    text = "${if (alert.isAbove) "Price >= " else "Price <= "}${String.format("%.4f", alert.targetPrice)}",
+                                                    color = TextGrey,
+                                                    fontSize = 9.sp
+                                                )
+                                            }
+                                        }
+
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            if (alert.isTriggered) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(BearishRed.copy(alpha = 0.15f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text("TRIGGERED", color = BearishRed, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            } else {
+                                                Switch(
+                                                    checked = alert.isEnabled,
+                                                    onCheckedChange = { viewModel.toggleAlertEnabled(alert.id) },
+                                                    colors = SwitchDefaults.colors(
+                                                        checkedThumbColor = ElectricBlue,
+                                                        checkedTrackColor = ElectricBlue.copy(alpha = 0.4f)
+                                                    )
+                                                )
+                                            }
+
+                                            IconButton(
+                                                onClick = { viewModel.deletePriceAlert(alert.id) },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = TextGrey, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
-        } else {
-            when (val state = marketState) {
-                is MarketUiState.Loading -> {
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = ElectricBlue)
-                    }
-                }
-                is MarketUiState.Error -> {
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Text(state.message, color = BearishRed)
-                    }
-                }
-                is MarketUiState.Success -> {
-                    val filteredPairs = remember(state.pairs, watchlist) {
-                        state.pairs.filter { watchlist.contains(it.symbol) }
-                    }
 
-                    LazyColumn(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+            // Divider or Header for watchlisted indices
+            item {
+                Text(
+                    text = "Pinned Watchlist Indices",
+                    color = TextGrey,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp)
+                )
+            }
+
+            // original watchlist indices
+            if (watchlist.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        items(filteredPairs) { pair ->
-                            ForexPairRowCard(
-                                pair = pair,
-                                isWatchlisted = true,
-                                onWatchlistToggle = { viewModel.toggleWatchlist(pair.symbol) },
-                                onClick = { onPairSelected(pair.symbol) }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Filled.StarBorder,
+                                contentDescription = "Empty Watchlist",
+                                tint = TextGrey.copy(alpha = 0.5f),
+                                modifier = Modifier.size(48.dp)
                             )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Your watchlist is empty.",
+                                color = TextWhite,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Tap the star icon beside currency labels on the dashboard to pin favorites here for easy tracking.",
+                                color = TextGrey,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 4.dp, start = 16.dp, end = 16.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                when (val state = marketState) {
+                    is MarketUiState.Loading -> {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = ElectricBlue)
+                            }
+                        }
+                    }
+                    is MarketUiState.Error -> {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                                Text(state.message, color = BearishRed, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                    is MarketUiState.Success -> {
+                        val filteredPairs = state.pairs.filter { watchlist.contains(it.symbol) }
+                        items(filteredPairs) { pair ->
+                            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                ForexPairRowCard(
+                                    pair = pair,
+                                    isWatchlisted = true,
+                                    onWatchlistToggle = { viewModel.toggleWatchlist(pair.symbol) },
+                                    onClick = { onPairSelected(pair.symbol) }
+                                )
+                            }
                         }
                     }
                 }
@@ -2115,6 +2390,395 @@ fun SearchScreen(
                     .weight(1f)
                     .fillMaxWidth()
             )
+        }
+    }
+}
+
+// --- Economic Calendar Sub-Feature ---
+
+@Composable
+fun EconomicCalendarView(
+    onNavigateToChat: (String) -> Unit
+) {
+    val events = remember {
+        listOf(
+            EconomicEvent("15:30", "USD", "Non-Farm Payrolls (NFP)", "HIGH", "200K", "185K", "215K", "The primary measure of US job creation. High values usually strengthen the USD."),
+            EconomicEvent("11:00", "EUR", "ECB Interest Rate Decision", "HIGH", "4.25%", "4.50%", "4.25%", "Refined monetary policy statement. Lower rates generally weaken the Euro."),
+            EconomicEvent("14:30", "GBP", "CPI Inflation Rate YoY", "HIGH", "2.1%", "2.0%", "2.2%", "Measures UK consumer price index shifts. Higher values may force BoE interest hikes."),
+            EconomicEvent("17:45", "USD", "FOMC Meeting Minutes", "MEDIUM", "N/A", "N/A", "N/A", "Detailed record of US Federal Reserve policy meetings. Drives technical trend sentiment."),
+            EconomicEvent("09:15", "CHF", "S foreign currency reserves", "LOW", "710B", "705B", "712B", "Reflects Swiss National Bank Forex interventions.")
+        )
+    }
+
+    var reminderSetMap by remember { mutableStateOf(emptyMap<String, Boolean>()) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text(
+                text = "Economic Events Tracker",
+                color = TextWhite,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+            Text(
+                text = "High-impact macro milestones dictating currency volatility index vectors.",
+                color = TextGrey,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+            )
+        }
+
+        items(events) { event ->
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Country Flag Badge / Currency indicator
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(ElectricBlue.copy(alpha = 0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(event.currency, color = ElectricBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                            
+                            // Impact Badge
+                            val impactColor = when (event.impact) {
+                                "HIGH" -> BearishRed
+                                "MEDIUM" -> Color(0xFFFF9100)
+                                else -> TextGrey
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(impactColor.copy(alpha = 0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("${event.impact} IMPACT", color = impactColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Text(event.time, color = TextGrey, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(event.title, color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(event.description, color = TextGrey, fontSize = 11.sp, lineHeight = 15.sp)
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Column {
+                                Text("ACTUAL", color = TextGrey, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                Text(event.actual, color = if (event.actual != "N/A") TextWhite else TextGrey, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column {
+                                Text("FORECAST", color = TextGrey, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                Text(event.forecast, color = TextGrey, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column {
+                                Text("PREVIOUS", color = TextGrey, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                Text(event.previous, color = TextGrey, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val isReminderSet = reminderSetMap[event.title] == true
+                            // Set Reminder button
+                            IconButton(
+                                onClick = {
+                                    val nextState = !isReminderSet
+                                    reminderSetMap = reminderSetMap + (event.title to nextState)
+                                    val msg = if (nextState) "Reminder active for ${event.title}" else "Reminder removed"
+                                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isReminderSet) NeonCyan.copy(alpha = 0.15f) else BorderSlate)
+                            ) {
+                                Icon(
+                                    imageVector = if (isReminderSet) Icons.Default.NotificationsActive else Icons.Default.Notifications,
+                                    contentDescription = "Set Notification Alert",
+                                    tint = if (isReminderSet) NeonCyan else TextGrey,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+
+                            // Ask AI Tutor
+                            IconButton(
+                                onClick = {
+                                    val query = "Explain how the economic event '${event.title}' for currency ${event.currency} affects foreign exchange markets and what trading strategies apply."
+                                    onNavigateToChat(query)
+                                },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(BorderSlate)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Chat,
+                                    contentDescription = "Analyze with AI Tutor",
+                                    tint = ElectricBlue,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class EconomicEvent(
+    val time: String,
+    val currency: String,
+    val title: String,
+    val impact: String,
+    val forecast: String,
+    val previous: String,
+    val actual: String,
+    val description: String
+)
+
+// --- Position Size and Risk Calculator Sub-Feature ---
+
+@Composable
+fun PositionCalculatorView() {
+    var accountCurrency by remember { mutableStateOf("USD") }
+    var accountBalance by remember { mutableStateOf("10000") }
+    var riskPercent by remember { mutableStateOf("1.0") }
+    var stopLossPips by remember { mutableStateOf("20") }
+    var selectedPair by remember { mutableStateOf("EUR/USD") }
+
+    val computedLotSize = remember(accountBalance, riskPercent, stopLossPips, selectedPair) {
+        try {
+            val balance = accountBalance.toDoubleOrNull() ?: 0.0
+            val risk = riskPercent.toDoubleOrNull() ?: 0.0
+            val stopLoss = stopLossPips.toDoubleOrNull() ?: 1.0
+            
+            // Standard risk computation: Cash Risk = Balance * (Risk / 100)
+            val cashRisk = balance * (risk / 100.0)
+            
+            // Pip value multiplier
+            // For standard pairs like EUR/USD, 1 pip for 1 standard lot (100,000 units) is $10 USD.
+            // For USD/JPY, pip size calculation accounts for currency quote. For simplicity, we approximate:
+            val pipValueMultiplier = if (selectedPair.contains("JPY")) 8.5 else 10.0
+            
+            // Standard Lots = Cash Risk / (Stop Loss * Pip Value of 1 Lot)
+            val rawLots = cashRisk / (stopLoss * pipValueMultiplier)
+            
+            // Coerce/format
+            val finalLots = rawLots.coerceAtLeast(0.01).coerceAtMost(100.0)
+            val totalUnits = (finalLots * 100000.0).toInt()
+            
+            Triple(String.format("%.2f", finalLots), String.format("%,d", totalUnits), String.format("%.2f", cashRisk))
+        } catch (e: Exception) {
+            Triple("0.00", "0", "0.00")
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text(
+                text = "Position Size & Risk Calculator",
+                color = TextWhite,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+            Text(
+                text = "Determine the optimal lot sizes to manage trading risk securely according to your threshold rules.",
+                color = TextGrey,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Account Balance
+                    OutlinedTextField(
+                        value = accountBalance,
+                        onValueChange = { accountBalance = it.filter { char -> char.isDigit() || char == '.' } },
+                        label = { Text("Account Balance ($accountCurrency)", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth().testTag("calc_balance_input"),
+                        textStyle = TextStyle(color = TextWhite, fontSize = 13.sp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ElectricBlue,
+                            unfocusedBorderColor = BorderSlate,
+                            focusedLabelColor = ElectricBlue,
+                            unfocusedLabelColor = TextGrey
+                        ),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Risk Percent
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = riskPercent,
+                            onValueChange = { riskPercent = it.filter { char -> char.isDigit() || char == '.' } },
+                            label = { Text("Risk Ratio (%)", fontSize = 11.sp) },
+                            modifier = Modifier.weight(1f).testTag("calc_risk_input"),
+                            textStyle = TextStyle(color = TextWhite, fontSize = 13.sp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ElectricBlue,
+                                unfocusedBorderColor = BorderSlate,
+                                focusedLabelColor = ElectricBlue,
+                                unfocusedLabelColor = TextGrey
+                            ),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = stopLossPips,
+                            onValueChange = { stopLossPips = it.filter { char -> char.isDigit() } },
+                            label = { Text("Stop Loss (Pips)", fontSize = 11.sp) },
+                            modifier = Modifier.weight(1f).testTag("calc_sl_input"),
+                            textStyle = TextStyle(color = TextWhite, fontSize = 13.sp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ElectricBlue,
+                                unfocusedBorderColor = BorderSlate,
+                                focusedLabelColor = ElectricBlue,
+                                unfocusedLabelColor = TextGrey
+                            ),
+                            singleLine = true
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Currency Selector & Pair Choice Row
+                    Text("Currency Pair Option", color = TextGrey, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD").forEach { pair ->
+                            val isSelected = selectedPair == pair
+                            Button(
+                                onClick = { selectedPair = pair },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(32.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelected) ElectricBlue else BorderSlate,
+                                    contentColor = if (isSelected) Color.White else TextWhite
+                                ),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(pair, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Result Card with glowing gradient border
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                border = BorderStroke(1.dp, ElectricBlue.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(Color(0xFF131926), Color(0xFF111827))
+                            )
+                        )
+                        .padding(16.dp)
+                ) {
+                    Text("CALCULATED EXPOSURE", color = NeonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Recommended Lot Size", color = TextGrey, fontSize = 11.sp)
+                            Text("${computedLotSize.first} Lots", color = TextWhite, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Risk Capital Value", color = TextGrey, fontSize = 11.sp)
+                            Text("$${computedLotSize.third} USD", color = BearishRed, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = BorderSlate.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Standard Units", color = TextGrey, fontSize = 10.sp)
+                            Text("${computedLotSize.second} units", color = TextWhite, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+
+                        val safetyVerdict = when {
+                            (riskPercent.toDoubleOrNull() ?: 0.0) <= 1.0 -> "Safe (Low Risk)"
+                            (riskPercent.toDoubleOrNull() ?: 0.0) <= 3.0 -> "Moderate Exposure"
+                            else -> "Alert: Aggressive Risk!"
+                        }
+                        val verdictColor = when {
+                            (riskPercent.toDoubleOrNull() ?: 0.0) <= 1.0 -> BullishGreen
+                            (riskPercent.toDoubleOrNull() ?: 0.0) <= 3.0 -> Color(0xFFFF9100)
+                            else -> BearishRed
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Risk Profile Assessment", color = TextGrey, fontSize = 10.sp)
+                            Text(safetyVerdict, color = verdictColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
     }
 }

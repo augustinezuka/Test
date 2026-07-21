@@ -28,9 +28,28 @@ sealed interface RecommendationUiState {
     data class Error(val message: String) : RecommendationUiState
 }
 
+data class PriceAlert(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val symbol: String,
+    val targetPrice: Double,
+    val isAbove: Boolean,
+    val isEnabled: Boolean = true,
+    val isTriggered: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 class ForexViewModel(application: Application) : AndroidViewModel(application) {
     private val TAG = "ForexViewModel"
     private val repository = ForexRepository(application)
+
+    // Real-time custom price alerts
+    private val _priceAlerts = MutableStateFlow<List<PriceAlert>>(
+        listOf(
+            PriceAlert(symbol = "EUR/USD", targetPrice = 1.0920, isAbove = true),
+            PriceAlert(symbol = "GBP/USD", targetPrice = 1.2820, isAbove = false)
+        )
+    )
+    val priceAlerts: StateFlow<List<PriceAlert>> = _priceAlerts.asStateFlow()
 
     // Raw market pairs data
     private val _pairsFlow = MutableStateFlow<List<ForexPairData>>(emptyList())
@@ -94,6 +113,36 @@ class ForexViewModel(application: Application) : AndroidViewModel(application) {
                     _pairsFlow.value = freshData
                     if (_marketUiState.value is MarketUiState.Loading || _marketUiState.value is MarketUiState.Success) {
                         _marketUiState.value = MarketUiState.Success(freshData)
+                    }
+                    
+                    // Reactive Price Alert Trigger Checks
+                    val currentAlerts = _priceAlerts.value
+                    var alertsUpdated = false
+                    val updatedAlerts = currentAlerts.map { alert ->
+                        if (alert.isEnabled && !alert.isTriggered) {
+                            val matchingPair = freshData.find { it.symbol == alert.symbol }
+                            if (matchingPair != null) {
+                                val curPrice = matchingPair.currentPrice
+                                val hasCrossed = if (alert.isAbove) {
+                                    curPrice >= alert.targetPrice
+                                } else {
+                                    curPrice <= alert.targetPrice
+                                }
+                                if (hasCrossed) {
+                                    alertsUpdated = true
+                                    alert.copy(isEnabled = false, isTriggered = true)
+                                } else {
+                                    alert
+                                }
+                            } else {
+                                alert
+                            }
+                        } else {
+                            alert
+                        }
+                    }
+                    if (alertsUpdated) {
+                        _priceAlerts.value = updatedAlerts
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Ticker failed to refresh", e)
@@ -230,5 +279,22 @@ class ForexViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearChat() {
         _chatHistory.value = emptyList()
+    }
+
+    // --- Price Alert CRUD Functions ---
+
+    fun addPriceAlert(symbol: String, targetPrice: Double, isAbove: Boolean) {
+        val newAlert = PriceAlert(symbol = symbol, targetPrice = targetPrice, isAbove = isAbove)
+        _priceAlerts.value = _priceAlerts.value + newAlert
+    }
+
+    fun toggleAlertEnabled(id: String) {
+        _priceAlerts.value = _priceAlerts.value.map {
+            if (it.id == id) it.copy(isEnabled = !it.isEnabled, isTriggered = false) else it
+        }
+    }
+
+    fun deletePriceAlert(id: String) {
+        _priceAlerts.value = _priceAlerts.value.filter { it.id != id }
     }
 }

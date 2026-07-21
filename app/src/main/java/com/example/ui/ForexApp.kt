@@ -183,6 +183,9 @@ fun ForexApp(
                             // Replace slash to make path safe
                             val safeSymbol = symbol.replace("/", "_")
                             navController.navigate("${Routes.DETAIL}/$safeSymbol")
+                        },
+                        onNavigateToChat = {
+                            navController.navigate(Routes.CHAT)
                         }
                     )
                 }
