@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -38,6 +39,15 @@ data class PriceAlert(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+data class AppNotification(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val message: String,
+    val type: String, // "PRICE_ALERT", "AI_SIGNAL", "SYSTEM"
+    val timestamp: Long = System.currentTimeMillis(),
+    val isRead: Boolean = false
+)
+
 class ForexViewModel(application: Application) : AndroidViewModel(application) {
     private val TAG = "ForexViewModel"
     private val repository = ForexRepository(application)
@@ -50,6 +60,18 @@ class ForexViewModel(application: Application) : AndroidViewModel(application) {
         )
     )
     val priceAlerts: StateFlow<List<PriceAlert>> = _priceAlerts.asStateFlow()
+
+    // Real-time in-app and system notifications history
+    private val _notifications = MutableStateFlow<List<AppNotification>>(
+        listOf(
+            AppNotification(
+                title = "Welcome to Forex AI Pro!",
+                message = "Your high-fidelity real-time currency trading companion is active. Set custom price alerts in Settings.",
+                type = "SYSTEM"
+            )
+        )
+    )
+    val notifications: StateFlow<List<AppNotification>> = _notifications.asStateFlow()
 
     // Raw market pairs data
     private val _pairsFlow = MutableStateFlow<List<ForexPairData>>(emptyList())
@@ -130,6 +152,21 @@ class ForexViewModel(application: Application) : AndroidViewModel(application) {
                                 }
                                 if (hasCrossed) {
                                     alertsUpdated = true
+                                    
+                                    val direction = if (alert.isAbove) "surpassed" else "dropped below"
+                                    val trendStr = if (curPrice > alert.targetPrice) "Bullish expansion 📈" else "Corrective pullback 📉"
+                                    val dailyChange = matchingPair.dailyChangePercent
+                                    val volatility = matchingPair.volatilityScore
+                                    val leadNews = matchingPair.news.firstOrNull()?.replace(".", "") ?: "technical pivot breakout"
+                                    
+                                    val title = "AI Alert: ${alert.symbol} Key Pivot Reached! 🤖✨"
+                                    val message = "${alert.symbol} has $direction your trigger price of ${String.format("%.4f", alert.targetPrice)} (Current: ${String.format("%.4f", curPrice)}). Today's change is ${String.format("%.2f", dailyChange)}% ($trendStr) with volatility at ${String.format("%.1f", volatility)}/10. Catalyst: '$leadNews'. Monitor closely for breakout entries."
+                                    
+                                    triggerNotification(
+                                        title = title,
+                                        message = message,
+                                        type = "PRICE_ALERT"
+                                    )
                                     alert.copy(isEnabled = false, isTriggered = true)
                                 } else {
                                     alert
@@ -168,6 +205,21 @@ class ForexViewModel(application: Application) : AndroidViewModel(application) {
                 
                 val response = repository.generateRecommendations(activePairs, profile)
                 _recommendationUiState.value = RecommendationUiState.Success(response)
+
+                // Trigger Smart AI prediction notification
+                val topPick = response.recommendedPairs.maxByOrNull { it.confidence }
+                val title = "AI Market Intelligence Signal! 🤖📊"
+                val message = if (topPick != null) {
+                    "Top pick: ${topPick.pair} (${topPick.suggestedAction}) at ${topPick.confidence}% confidence. Catalyst: '${topPick.rationale}'. Global Outlook: ${response.overallSummary}"
+                } else {
+                    "Forex AI successfully generated new recommendation signals: ${response.overallSummary}"
+                }
+
+                triggerNotification(
+                    title = title,
+                    message = message,
+                    type = "AI_SIGNAL"
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed generating recommendations", e)
                 _recommendationUiState.value = RecommendationUiState.Error("AI generation failed. Please verify internet connection.")
@@ -303,5 +355,59 @@ class ForexViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deletePriceAlert(id: String) {
         _priceAlerts.value = _priceAlerts.value.filter { it.id != id }
+    }
+
+    // --- In-App & System Notification Control APIs ---
+
+    fun triggerNotification(title: String, message: String, type: String) {
+        val newNotification = AppNotification(title = title, message = message, type = type)
+        _notifications.value = listOf(newNotification) + _notifications.value
+
+        // Post a real system notification if enabled in profile settings
+        if (userProfile.value.notificationsEnabled) {
+            postSystemNotification(title, message)
+        }
+    }
+
+    private fun postSystemNotification(title: String, message: String) {
+        val context = getApplication<Application>()
+        val channelId = "forex_alerts_channel"
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                channelId,
+                "Forex Price & AI Alerts",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications for custom price limits and AI generated recommendations"
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val builder = androidx.core.app.NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        try {
+            notificationManager.notify(System.currentTimeMillis().toInt(), builder.build())
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed posting system notification: ${e.message}")
+        }
+    }
+
+    fun markAllNotificationsAsRead() {
+        _notifications.value = _notifications.value.map { it.copy(isRead = true) }
+    }
+
+    fun deleteNotification(id: String) {
+        _notifications.value = _notifications.value.filter { it.id != id }
+    }
+
+    fun clearAllNotifications() {
+        _notifications.value = emptyList()
     }
 }

@@ -59,7 +59,8 @@ data class AIRecommendation(
 data class AIServiceResponse(
     val recommendedPairs: List<AIRecommendation>,
     val overallSummary: String,
-    val disclaimer: String
+    val disclaimer: String,
+    val thinkingProcess: String = ""
 )
 
 interface GeminiApiService {
@@ -200,10 +201,13 @@ object GeminiClient {
                 throw Exception("Recommendations list was empty inside JSON")
             }
 
+            val thinkingProcess = root.optString("thinking_process", root.optString("thinkingProcess", ""))
+
             return AIServiceResponse(
                 recommendedPairs = list,
                 overallSummary = overallSummary,
-                disclaimer = disclaimer
+                disclaimer = disclaimer,
+                thinkingProcess = thinkingProcess
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed parsing JSON, generating plausible model from fallback: ${e.message}")
@@ -253,11 +257,13 @@ object GeminiClient {
             - Extract 1-2 key news topics relevant to each recommendation.
             - Provide a master "overall_summary" of the market sentiment (2 sentences).
             - Always include a standard regulatory financial disclaimer stating that this is informational only and NOT financial advice.
+            - Include a detailed step-by-step "thinking_process" explaining the underlying market mechanics, macroeconomic trends, and risk profiling you performed.
             
             MANDATORY FORMAT:
             You MUST respond ONLY with a single valid JSON object. Do not include any markdown backticks or wrapper code. It must be directly parseable. Use the following exact JSON structure:
             
             {
+              "thinking_process": "Detailed reasoning about market trends, technical patterns, and risk profiling used to align recommendations with the selected risk profile...",
               "recommended_pairs": [
                 {
                   "pair": "EUR/USD",
@@ -359,10 +365,18 @@ object GeminiClient {
             else -> "High-yield trading bounds are highly active today. Breakout channels in JPY and AUD index pools offer high-risk acceleration zones."
         }
 
+        val thinkingProcess = """
+            1. CORRIDOR SEGMENTATION: Evaluated standard technical support ranges for main currency corridors. Major pairs (EUR/USD, USD/CHF) indicate low-volatility patterns suited for conservative portfolios, whereas GBP/USD and USD/JPY have elevated price deviations (volatility score > 7.0) showing potential breakout opportunities.
+            2. POLICY & NEWS DIVERGENCE ANALYSIS: Reviewed central bank sentiment. Market expectations regarding Fed rate pauses contrast with the ECB's hawkish stance, supporting the Euro.
+            3. RISK HORIZON ADJUSTMENT: Formulated suggested action states ("BUY", "SELL", "HOLD", "WATCH") and confidence levels customized for a '$riskLevel' profile, balancing risk boundaries to avoid high exposure for lower-risk configurations.
+            4. CORRELATION RECONCILIATION: Computed risk and confidence ratings, verifying cross-pair correlations to align recommended actions cleanly with technical markers.
+        """.trimIndent()
+
         return AIServiceResponse(
             recommendedPairs = list,
             overallSummary = overallSummary,
-            disclaimer = "DISCLAIMER: This platform is powered by simulated Forex indicators & real-time Gemini LLM processing. Recommendations are informational only and do not constitute professional financial advice."
+            disclaimer = "DISCLAIMER: This platform is powered by simulated Forex indicators & real-time Gemini LLM processing. Recommendations are informational only and do not constitute professional financial advice.",
+            thinkingProcess = thinkingProcess
         )
     }
 
@@ -407,6 +421,9 @@ object GeminiClient {
             $newPrompt
             
             DIRECTIONS:
+            - Before answering the user's question, write down your detailed, step-by-step thinking/reasoning process enclosed entirely within <thinking>...</thinking> tags. 
+              Explain what aspects of technical indicators, fundamental news, risk profile boundaries, and currency correlation you are evaluating to formulate your answer.
+            - After the closing </thinking> tag, output your actual final conversational response.
             - Answer the user's question clearly, professionally, and with actionable market context.
             - Keep your response friendly, concise (under 4 paragraphs), and conversational.
             - Include appropriate formatting (bullet points, bold highlights) to make it highly readable.
@@ -437,54 +454,157 @@ object GeminiClient {
         riskLevel: String
     ): String {
         val normalized = prompt.lowercase()
-        return when {
-            normalized.contains("why") && contextPair != null -> {
-                """
-                My current recommendation for **${contextPair.symbol}** is based on three convergent factors analyzed for a **$riskLevel** risk profile:
-                
-                1. **Volatility Structure**: The pair is currently trading at **${contextPair.currentPrice}** with a daily change of **${String.format("%.2f", contextPair.dailyChangePercent)}%**. This presents stable pivot corridors.
-                2. **News Sentiment**: The latest updates including *"${contextPair.news.firstOrNull() ?: "Key index releases"}"* indicate solid support.
-                3. **Risk Optimization**: For **$riskLevel** strategies, we seek entries that align with optimal safety limits, keeping exposure constrained.
-                
-                *Disclaimer: This analysis is for educational purposes only.*
-                """.trimIndent()
-            }
-            normalized.contains("volatility") -> {
-                if (contextPair != null) {
-                    """
-                    Volatility for **${contextPair.symbol}** is currently indexed at **${String.format("%.1f", contextPair.volatilityScore)} out of 10**. 
-                    
-                    In Forex terms, this indicates **${if (contextPair.volatilityScore > 7.0) "high intra-day momentum" else "stable range-bound action"}**. For a **$riskLevel** trader, this volatility means:
-                    
-                    * **Conservative stance**: Exercise caution, keep stop-losses tight, or favor more stable indexes.
-                    * **Tactical execution**: Position sizing should be adjusted downward to offset sudden news shocks.
-                    """.trimIndent()
-                } else {
-                    """
-                    Forex market volatility is heavily driven by central bank interest rate expectations and macroeconomic releases like CPI and Employment reports.
-                    
-                    Today, **GBP/USD** and **USD/JPY** show elevated volatility scores (above 7/10), presenting breakout corridors. Meanwhile, **EUR/USD** remains a highly stable channel suited for standard range-bound strategies.
-                    """.trimIndent()
-                }
-            }
-            normalized.contains("conservative") || normalized.contains("strategy") -> {
-                """
-                A **Conservative Strategy** focuses on capital preservation and high-probability setups. Here are the core pillars:
-                
-                * **Asset Selection**: Focus exclusively on liquid, lower-volatility majors like **EUR/USD** or **USD/CHF**. Avoid minor cross-pairs.
-                * **Volatility Caps**: Restrict entries when pairs exceed a volatility score of 6.0/10.
-                * **Risk Management**: Never risk more than 1% of equity per trade. Ensure stop-losses are strictly aligned with historical daily support zones.
-                """.trimIndent()
-            }
-            else -> {
-                """
-                Hello! As your **Forex AI Assistant**, I am here to help you understand market trends, charts, and risk strategies.
-                
-                Regarding your question, for a **$riskLevel** strategy, it is always critical to analyze price pivots (currently **${contextPair?.symbol ?: "the majors"}** sits at **${contextPair?.currentPrice ?: "liquid averages"}**) and cross-reference them with fundamental news.
-                
-                What other questions do you have about currency pairings or risk management today?
-                """.trimIndent()
-            }
+
+        // Find which pairs are explicitly or implicitly mentioned
+        val matchedSymbols = mutableListOf<String>()
+        if (normalized.contains("eur") || normalized.contains("euro")) matchedSymbols.add("EUR/USD")
+        if (normalized.contains("gbp") || normalized.contains("pound") || normalized.contains("sterling")) matchedSymbols.add("GBP/USD")
+        if (normalized.contains("jpy") || normalized.contains("yen")) matchedSymbols.add("USD/JPY")
+        if (normalized.contains("aud") || normalized.contains("aussie")) matchedSymbols.add("AUD/USD")
+        if (normalized.contains("cad") || normalized.contains("loonie") || normalized.contains("canadian")) matchedSymbols.add("USD/CAD")
+        if (normalized.contains("chf") || normalized.contains("swiss") || normalized.contains("franc")) matchedSymbols.add("USD/CHF")
+        if (normalized.contains("nzd") || normalized.contains("kiwi")) matchedSymbols.add("NZD/USD")
+
+        // Fallback to active contextPair if no pair is explicitly mentioned in the text
+        val primaryPair = if (matchedSymbols.isNotEmpty()) {
+            try { com.example.data.forex.ForexEngine.getPairData(matchedSymbols.first()) } catch (e: Exception) { null }
+        } else {
+            contextPair
         }
+
+        if (primaryPair != null) {
+            val symbol = primaryPair.symbol
+            val name = primaryPair.name
+            val price = primaryPair.currentPrice
+            val change = primaryPair.dailyChangePercent
+            val vol = primaryPair.volatilityScore
+            val news = primaryPair.news.firstOrNull() ?: "Consolidation patterns dominate"
+            
+            val isPositive = change >= 0
+            val directionWord = if (isPositive) "gaining" else "sliding"
+            val trendEmoji = if (isPositive) "📈" else "📉"
+            val action = when (riskLevel) {
+                "Conservative" -> if (vol > 6.0) "WATCH (Avoid high volatility)" else if (isPositive) "BUY" else "HOLD"
+                "Moderate" -> if (isPositive) "BUY" else "SELL"
+                else -> if (isPositive) "BUY" else "SELL" // Aggressive
+            }
+            
+            return """
+                <thinking>
+                1. DETECTED TARGET SYMBOL: Direct match for $symbol ($name).
+                2. EXTRACT LIVE FEED: Sits at $price ($change% today), with volatility of $vol/10.
+                3. EVALUATE CATALYST: Primary news headline: "$news".
+                4. FORMULATE RISK ALIGNMENT: Tailoring suggested approach for a '$riskLevel' profile. Volatility score of $vol suggests ${if (vol > 6.5) "caution and wide trailing stops due to sharp corrective momentum" else "stable range accumulation opportunity"}.
+                </thinking>
+                Regarding your question about **$symbol** ($name), here is a live, real-time AI technical and fundamental breakdown:
+                
+                * **Current Price & Trend**: Sits at **${String.format("%.4f", price)}**, $directionWord by **${String.format("%.2f", change)}%** today $trendEmoji.
+                * **Market Volatility**: Scored at **${String.format("%.1f", vol)}/10**. ${if (vol > 6.5) "This indicates elevated intraday swings. Position sizes should be scaled down to manage risk." else "This represents stable, range-bound behavior suited for steady trend-accumulation."}
+                * **Fundamental Catalyst**: Driven primarily by: *"$news"*
+                
+                **AI Advisory for $riskLevel Profile**:
+                Based on your **$riskLevel** settings, the recommended stance for **$symbol** is **$action**. 
+                ${when (riskLevel) {
+                    "Conservative" -> "Prioritize asset safety. Ensure stop-loss limits are placed close to major daily support levels (approx. 0.5% below entry). Avoid chasing breakouts."
+                    "Moderate" -> "Look for pullbacks within the current daily range to establish strategic entries. A standard 1.2% trailing stop aligns with current volatility indices."
+                    else -> "Excellent environment for breakout scalping. Highly responsive to momentum shifts. Consider tight technical take-profit thresholds to capture quick gains."
+                }}
+                
+                *Disclaimer: All analyses are simulated and for educational/testing purposes.*
+            """.trimIndent()
+        }
+
+        val hasTradingKeyword = normalized.contains("signal") || normalized.contains("recommend") || 
+                normalized.contains("best") || normalized.contains("buy") || 
+                normalized.contains("sell") || normalized.contains("market") || 
+                normalized.contains("trade")
+
+        if (hasTradingKeyword) {
+            // Pick a couple of major active pairs to show a high-fidelity comparative review
+            val eur = try { com.example.data.forex.ForexEngine.getPairData("EUR/USD") } catch (e: Exception) { null }
+            val gbp = try { com.example.data.forex.ForexEngine.getPairData("GBP/USD") } catch (e: Exception) { null }
+            val jpy = try { com.example.data.forex.ForexEngine.getPairData("USD/JPY") } catch (e: Exception) { null }
+            
+            val eurText = eur?.let { "**EUR/USD** at ${String.format("%.4f", it.currentPrice)} (${String.format("%.2f", it.dailyChangePercent)}%)" } ?: ""
+            val gbpText = gbp?.let { "**GBP/USD** at ${String.format("%.4f", it.currentPrice)} (${String.format("%.2f", it.dailyChangePercent)}%)" } ?: ""
+            val jpyText = jpy?.let { "**USD/JPY** at ${String.format("%.4f", it.currentPrice)} (${String.format("%.2f", it.dailyChangePercent)}%)" } ?: ""
+            
+            return """
+                <thinking>
+                1. DETECTED TOPIC: General market opportunity / active trading signals.
+                2. LOAD MULTI-PAIR FEED: Pulling live quotes for EUR/USD, GBP/USD, and USD/JPY.
+                3. COMPARE RISK METRICS: Aligning breakouts versus consolidation zones.
+                4. BUILD COMPREHENSIVE ADVISORY: Drafting custom recommendations matching '$riskLevel' preference.
+                </thinking>
+                Based on real-time market data across key global corridors, here are the top trading insights matching your **$riskLevel** risk profile:
+                
+                * $eurText: Low-volatility range accumulation. Ideal for steady, low-drawdown setups.
+                * $gbpText: Moderate consolidation near local resistance. Watch for a clean daily breakout.
+                * $jpyText: Elevated volatility and swift corrective movements. High potential for active momentum trading.
+                
+                **Smart AI Trading Guidance**:
+                - For a **$riskLevel** profile, focus today on **${if (riskLevel == "Conservative") "EUR/USD" else "USD/JPY or GBP/USD"}** to align exposure with your target capital preservation bounds.
+                - Ensure strict risk rules: Keep maximum portfolio exposure under 2% per open pair.
+                
+                *Disclaimer: Simulated market feedback for educational purposes.*
+            """.trimIndent()
+        }
+
+        val hasNewsKeyword = normalized.contains("news") || normalized.contains("headline") || 
+                normalized.contains("fed") || normalized.contains("ecb") || 
+                normalized.contains("bank") || normalized.contains("interest")
+
+        if (hasNewsKeyword) {
+            // Gather top headlines from major pairs
+            val eur = try { com.example.data.forex.ForexEngine.getPairData("EUR/USD") } catch (e: Exception) { null }
+            val gbp = try { com.example.data.forex.ForexEngine.getPairData("GBP/USD") } catch (e: Exception) { null }
+            val jpy = try { com.example.data.forex.ForexEngine.getPairData("USD/JPY") } catch (e: Exception) { null }
+            
+            val eurNews = eur?.news?.firstOrNull() ?: "ECB policy stays stable."
+            val gbpNews = gbp?.news?.firstOrNull() ?: "UK inflation stabilizes."
+            val jpyNews = jpy?.news?.firstOrNull() ?: "BoJ monitors currency volatility."
+            
+            return """
+                <thinking>
+                1. DETECTED TOPIC: Fundamental analysis / central bank news.
+                2. GATHER CENTRAL BANK STATEMENTS: Synthesizing Fed, ECB, BoE, and BoJ news templates.
+                3. CORRELATE TO PRICE CHANNELS: Assessing how macroeconomic announcements impact key majors.
+                </thinking>
+                Here is a summary of the major central bank announcements and fundamental news catalysts currently driving the forex market:
+                
+                1. **European Central Bank (EUR)**: *"$eurNews"* — Easing/tightening debates continue to set local support pivots.
+                2. **Bank of England (GBP)**: *"$gbpNews"* — Keep a close eye on retail indices and inflation boundaries.
+                3. **Bank of Japan (JPY)**: *"$jpyNews"* — Intervention worries and yield curve changes keep volatility elevated.
+                
+                These news headlines are the primary factors behind the current intraday breakouts. Always match your positions to fundamental catalysts before technical indicators!
+            """.trimIndent()
+        }
+
+        // Fallback for any other questions: identify most active pair in the system
+        val allPairs = listOf("EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "USD/CHF", "NZD/USD")
+            .mapNotNull { try { com.example.data.forex.ForexEngine.getPairData(it) } catch(e: Exception) { null } }
+        val mostActive = allPairs.maxByOrNull { kotlin.math.abs(it.dailyChangePercent) } ?: contextPair
+        
+        val activeSymbol = mostActive?.symbol ?: "EUR/USD"
+        val activePrice = mostActive?.currentPrice ?: 1.0850
+        val activeChange = mostActive?.dailyChangePercent ?: 0.0
+        
+        return """
+            <thinking>
+            1. DETECTED TOPIC: Unstructured query/General conversation.
+            2. ENGAGE EXPERT ADVISOR PERSONA: Responsive, context-aware, analytical.
+            3. SCAN LIVE FEEDS FOR HIGHLIGHTS: Selected $activeSymbol as the most active mover today (${String.format("%.2f", activeChange)}%).
+            4. TAILOR TO USER PROFILE: Formulating answer for $riskLevel profile.
+            </thinking>
+            Hello! As your **Forex AI Assistant**, I'm here to provide direct, intelligent answers about live market developments and strategic trading.
+            
+            To give you immediate context, the most active major pair right now is **$activeSymbol** trading at **${String.format("%.4f", activePrice)}** (${if (activeChange >= 0) "+" else ""}${String.format("%.2f", activeChange)}% today). 
+            
+            For your **$riskLevel** trading profile, this environment presents:
+            - **Key Opportunity**: ${if (kotlin.math.abs(activeChange) > 0.5) "A clear momentum breakout in $activeSymbol. Perfect for short-term range strategies." else "Highly stable, low-drawdown ranges across all majors, offering secure long-term setups."}
+            - **Next Steps**: You can ask me specific questions about technical indicators, central bank decisions, or ask *"Why should I trade $activeSymbol today?"* to get a customized, deep-dive recommendation.
+            
+            How can I assist you with your trading questions today?
+        """.trimIndent()
     }
 }

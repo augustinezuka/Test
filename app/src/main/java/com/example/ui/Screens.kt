@@ -355,30 +355,78 @@ fun DashboardScreen(
                 }
             }
 
-            // User Profile Risk Badge
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(TagBackground)
-                    .border(1.dp, BorderSlate, RoundedCornerShape(20.dp))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            // Right side Action Tray: Notification Bell & User Profile Risk Badge
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                val notifications by viewModel.notifications.collectAsState()
+                val unreadCount = notifications.count { !it.isRead }
+                var showNotificationsCenter by remember { mutableStateOf(false) }
+
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(CosmicCard)
+                        .border(1.dp, BorderSlate, RoundedCornerShape(10.dp))
+                        .clickable { showNotificationsCenter = true }
+                        .testTag("notification_bell_btn"),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = ElectricBlue,
-                        modifier = Modifier.size(14.dp)
+                    Box {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Notifications",
+                            tint = if (unreadCount > 0) NeonCyan else TextWhite,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        if (unreadCount > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .align(Alignment.TopEnd)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(Color.Red)
+                            )
+                        }
+                    }
+                }
+
+                if (showNotificationsCenter) {
+                    NotificationsCenterDialog(
+                        notifications = notifications,
+                        onDismiss = { showNotificationsCenter = false },
+                        onMarkAllAsRead = { viewModel.markAllNotificationsAsRead() },
+                        onDeleteNotification = { id -> viewModel.deleteNotification(id) },
+                        onClearAll = { viewModel.clearAllNotifications() }
                     )
-                    Text(
-                        text = profile.riskLevel,
-                        color = TextWhite,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(TagBackground)
+                        .border(1.dp, BorderSlate, RoundedCornerShape(20.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = ElectricBlue,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = profile.riskLevel,
+                            color = TextWhite,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -591,9 +639,63 @@ fun DashboardScreen(
                 )
 
                 if (recommendationState is RecommendationUiState.Success) {
+                    val report = (recommendationState as RecommendationUiState.Success).report
+                    if (!report.thinkingProcess.isNullOrBlank()) {
+                        var isThinkingExpanded by remember { mutableStateOf(false) }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth().testTag("rec_thinking_card"),
+                            colors = CardDefaults.cardColors(containerColor = CosmicBlack.copy(alpha = 0.4f)),
+                            border = BorderStroke(1.dp, BorderSlate.copy(alpha = 0.7f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isThinkingExpanded = !isThinkingExpanded },
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lightbulb,
+                                            contentDescription = "Thinking Icon",
+                                            tint = NeonCyan,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "AI DEEP THINKING PROCESS",
+                                            color = NeonCyan,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = if (isThinkingExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                        contentDescription = "Toggle Thinking",
+                                        tint = NeonCyan,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                if (isThinkingExpanded) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = report.thinkingProcess,
+                                        color = TextWhite.copy(alpha = 0.9f),
+                                        fontSize = 11.sp,
+                                        lineHeight = 16.sp,
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = (recommendationState as RecommendationUiState.Success).report.disclaimer,
+                        text = report.disclaimer,
                         color = TextGrey.copy(alpha = 0.7f),
                         fontSize = 9.sp,
                         lineHeight = 11.sp
@@ -1360,15 +1462,39 @@ fun ChatScreen(
 
             if (loading) {
                 item {
-                    Row(
+                    var thinkingStep by remember { mutableStateOf(0) }
+                    val thinkingTexts = listOf(
+                        "Analyzing market liquidity & historical corridors...",
+                        "Cross-referencing global rate statements & news indices...",
+                        "Synthesizing risk profile thresholds...",
+                        "Assembling detailed algorithmic recommendations..."
+                    )
+                    LaunchedEffect(Unit) {
+                        while (true) {
+                            kotlinx.coroutines.delay(2500)
+                            thinkingStep = (thinkingStep + 1) % thinkingTexts.size
+                        }
+                    }
+                    
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = ElectricBlue)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Gemini is composing analysis...", color = TextGrey, fontSize = 11.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = NeonCyan)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("AI Deep Thinking active...", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text(
+                            text = thinkingTexts[thinkingStep],
+                            color = TextGrey,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                            modifier = Modifier.padding(start = 24.dp)
+                        )
                     }
                 }
             }
@@ -1450,6 +1576,20 @@ fun ChatScreen(
     }
 }
 
+private fun extractThinking(text: String): Pair<String?, String> {
+    val startTag = "<thinking>"
+    val endTag = "</thinking>"
+    val startIndex = text.indexOf(startTag)
+    val endIndex = text.indexOf(endTag)
+    
+    if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
+        val thinking = text.substring(startIndex + startTag.length, endIndex).trim()
+        val remaining = (text.substring(0, startIndex) + text.substring(endIndex + endTag.length)).trim()
+        return Pair(thinking, remaining)
+    }
+    return Pair(null, text)
+}
+
 @Composable
 fun ChatBubble(text: String, isUser: Boolean) {
     Box(
@@ -1458,36 +1598,97 @@ fun ChatBubble(text: String, isUser: Boolean) {
             .padding(horizontal = 4.dp),
         contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
     ) {
-        Box(
-            modifier = Modifier
-                .clip(
-                RoundedCornerShape(
-                    topStart = 12.dp,
-                    topEnd = 12.dp,
-                    bottomStart = if (isUser) 12.dp else 0.dp,
-                    bottomEnd = if (isUser) 0.dp else 12.dp
-                )
-            )
-            .background(if (isUser) ElectricBlue else CosmicCard)
-            .border(
-                width = 1.dp,
-                color = if (isUser) ElectricBlue else BorderSlate,
-                shape = RoundedCornerShape(
-                    topStart = 12.dp,
-                    topEnd = 12.dp,
-                    bottomStart = if (isUser) 12.dp else 0.dp,
-                    bottomEnd = if (isUser) 0.dp else 12.dp
-                )
-            )
-            .padding(12.dp)
-            .widthIn(max = 280.dp)
+        val parsed = remember(text) { extractThinking(text) }
+        val thinking = parsed.first
+        val contentText = parsed.second
+
+        Column(
+            horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
+            modifier = Modifier.widthIn(max = 280.dp)
         ) {
-            Text(
-                text = text,
-                color = if (isUser) Color.White else TextWhite,
-                fontSize = 13.sp,
-                lineHeight = 18.sp
-            )
+            // Expandable Thinking Process block
+            if (!isUser && !thinking.isNullOrBlank()) {
+                var isThinkingExpanded by remember { mutableStateOf(false) }
+                Box(
+                    modifier = Modifier
+                        .padding(bottom = 6.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(CosmicCard)
+                        .border(1.dp, BorderSlate.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+                        .clickable { isThinkingExpanded = !isThinkingExpanded }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lightbulb,
+                                contentDescription = "Thinking",
+                                tint = NeonCyan,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Thinking Process",
+                                color = NeonCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Icon(
+                                imageVector = if (isThinkingExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Toggle",
+                                tint = NeonCyan,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                        if (isThinkingExpanded) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = thinking,
+                                color = TextGrey,
+                                fontSize = 10.sp,
+                                lineHeight = 14.sp,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Actual chat response bubble
+            if (contentText.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .clip(
+                            RoundedCornerShape(
+                                topStart = 12.dp,
+                                topEnd = 12.dp,
+                                bottomStart = if (isUser) 12.dp else 0.dp,
+                                bottomEnd = if (isUser) 0.dp else 12.dp
+                            )
+                        )
+                        .background(if (isUser) ElectricBlue else CosmicCard)
+                        .border(
+                            width = 1.dp,
+                            color = if (isUser) ElectricBlue else BorderSlate,
+                            shape = RoundedCornerShape(
+                                topStart = 12.dp,
+                                topEnd = 12.dp,
+                                bottomStart = if (isUser) 12.dp else 0.dp,
+                                bottomEnd = if (isUser) 0.dp else 12.dp
+                            )
+                        )
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = contentText,
+                        color = if (isUser) Color.White else TextWhite,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+            }
         }
     }
 }
@@ -2128,6 +2329,12 @@ fun SettingsScreen(
 
         // Mock Ticker alert Notifications
         item {
+            val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+            ) { isGranted ->
+                viewModel.toggleNotifications(isGranted)
+            }
+
             Card(
                 colors = CardDefaults.cardColors(containerColor = CosmicCard),
                 border = BorderStroke(1.dp, BorderSlate),
@@ -2144,7 +2351,13 @@ fun SettingsScreen(
                     }
                     Switch(
                         checked = profile.notificationsEnabled,
-                        onCheckedChange = { viewModel.toggleNotifications(it) },
+                        onCheckedChange = { enabled ->
+                            if (enabled && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                viewModel.toggleNotifications(enabled)
+                            }
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = ElectricBlue,
                             checkedTrackColor = ElectricBlue.copy(alpha = 0.4f)
@@ -2932,6 +3145,238 @@ fun PositionCalculatorView() {
                         Column(horizontalAlignment = Alignment.End) {
                             Text("Risk Profile Assessment", color = TextGrey, fontSize = 10.sp)
                             Text(safetyVerdict, color = verdictColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NotificationsCenterDialog(
+    notifications: List<com.example.viewmodel.AppNotification>,
+    onDismiss: () -> Unit,
+    onMarkAllAsRead: () -> Unit,
+    onDeleteNotification: (String) -> Unit,
+    onClearAll: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 500.dp),
+            colors = CardDefaults.cardColors(containerColor = CosmicCard),
+            border = BorderStroke(1.dp, BorderSlate),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = null,
+                            tint = NeonCyan,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Text(
+                            text = "Notifications Center",
+                            color = TextWhite,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close Dialog",
+                            tint = TextGrey,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Actions Bar
+                if (notifications.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = onMarkAllAsRead,
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(
+                                text = "Mark all as read",
+                                color = ElectricBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        TextButton(
+                            onClick = onClearAll,
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(
+                                text = "Clear all",
+                                color = BearishRed,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                // Scrollable Notifications List
+                if (notifications.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = TextGrey.copy(alpha = 0.5f),
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Text(
+                                text = "No notifications yet",
+                                color = TextGrey,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "Price alerts and AI generation signals will appear here.",
+                                color = TextGrey.copy(alpha = 0.7f),
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp)
+                            )
+                        }
+                    }
+                } else {
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(notifications) { item ->
+                            val itemBg = if (item.isRead) CosmicCard else BorderSlate.copy(alpha = 0.25f)
+                            val itemBorder = if (item.isRead) BorderSlate.copy(alpha = 0.4f) else NeonCyan.copy(alpha = 0.5f)
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(itemBg)
+                                    .border(1.dp, itemBorder, RoundedCornerShape(14.dp))
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                // Notification Type Icon
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(
+                                            when (item.type) {
+                                                "PRICE_ALERT" -> BearishRed.copy(alpha = 0.15f)
+                                                "AI_SIGNAL" -> NeonCyan.copy(alpha = 0.15f)
+                                                else -> ElectricBlue.copy(alpha = 0.15f)
+                                            }
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = when (item.type) {
+                                            "PRICE_ALERT" -> Icons.Default.TrendingUp
+                                            "AI_SIGNAL" -> Icons.Default.Lightbulb
+                                            else -> Icons.Default.Info
+                                        },
+                                        contentDescription = null,
+                                        tint = when (item.type) {
+                                            "PRICE_ALERT" -> BearishRed
+                                            "AI_SIGNAL" -> NeonCyan
+                                            else -> ElectricBlue
+                                        },
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                // Text Content
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = item.title,
+                                        color = TextWhite,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = item.message,
+                                        color = TextWhite.copy(alpha = 0.8f),
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = android.text.format.DateUtils.getRelativeTimeSpanString(
+                                            item.timestamp,
+                                            System.currentTimeMillis(),
+                                            android.text.format.DateUtils.MINUTE_IN_MILLIS
+                                        ).toString(),
+                                        color = TextGrey,
+                                        fontSize = 9.sp
+                                    )
+                                }
+
+                                // Delete Button
+                                IconButton(
+                                    onClick = { onDeleteNotification(item.id) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete Notification",
+                                        tint = TextGrey.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
