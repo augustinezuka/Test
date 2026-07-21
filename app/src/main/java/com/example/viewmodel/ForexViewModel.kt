@@ -184,6 +184,13 @@ class ForexViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updatePrimaryColor(hex: String) {
+        viewModelScope.launch {
+            val current = userProfile.value
+            repository.updateProfile(current.copy(primaryColorHex = hex))
+        }
+    }
+
     fun updateExternalApiSettings(apiKey: String, apiUrl: String) {
         viewModelScope.launch {
             val current = userProfile.value

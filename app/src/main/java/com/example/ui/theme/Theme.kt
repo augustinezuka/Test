@@ -13,7 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme =
   darkColorScheme(
-    primary = ElectricBlue,
+    primary = StaticElectricBlue,
     onPrimary = Color.White,
     secondary = NeonCyan,
     onSecondary = DarkTextWhite,
@@ -27,7 +27,7 @@ private val DarkColorScheme =
 
 private val LightColorScheme =
   lightColorScheme(
-    primary = ElectricBlue,
+    primary = StaticElectricBlue,
     onPrimary = Color.White,
     secondary = NeonCyan,
     onSecondary = LightTextWhite,
@@ -42,11 +42,20 @@ private val LightColorScheme =
 @Composable
 fun MyApplicationTheme(
   darkTheme: Boolean = isSystemInDarkTheme(),
+  primaryColorHex: String = "#2563EB",
   // Disable dynamic color so our premium design is always perfectly rendered
   dynamicColor: Boolean = false,
   content: @Composable () -> Unit,
 ) {
-  val colorScheme =
+  val parsedPrimary = androidx.compose.runtime.remember(primaryColorHex) {
+    try {
+      Color(android.graphics.Color.parseColor(primaryColorHex))
+    } catch (e: Exception) {
+      StaticElectricBlue
+    }
+  }
+
+  val baseColorScheme =
     when {
       dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
         val context = LocalContext.current
@@ -56,6 +65,13 @@ fun MyApplicationTheme(
       darkTheme -> DarkColorScheme
       else -> LightColorScheme
     }
+
+  val colorScheme = androidx.compose.runtime.remember(baseColorScheme, parsedPrimary) {
+    baseColorScheme.copy(
+      primary = parsedPrimary,
+      secondary = parsedPrimary
+    )
+  }
 
   MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
 }

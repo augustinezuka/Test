@@ -421,17 +421,19 @@ fun DashboardScreen(
             colors = CardDefaults.cardColors(containerColor = Color.Transparent),
             border = BorderStroke(1.dp, GridLineSlate.copy(alpha = 0.5f))
         ) {
+            val primaryColor = ElectricBlue
             val isLight = MaterialTheme.colorScheme.background == LightBgColor
+            val gradientColors = if (isLight) {
+                listOf(primaryColor.copy(alpha = 0.15f), LightCardColor)
+            } else {
+                listOf(primaryColor.copy(alpha = 0.22f), CosmicCard)
+            }
+            val textColor = if (isLight) Color(0xFF001E2F) else TextWhite
+
             Column(
                 modifier = Modifier
                     .background(
-                        androidx.compose.ui.graphics.Brush.linearGradient(
-                            colors = if (isLight) {
-                                listOf(Color(0xFFDCEBFF), Color(0xFFF3F8FF))
-                            } else {
-                                listOf(Color(0xFF1B243B), Color(0xFF111827))
-                            }
-                        )
+                        androidx.compose.ui.graphics.Brush.linearGradient(colors = gradientColors)
                     )
                     .padding(16.dp)
             ) {
@@ -445,7 +447,7 @@ fun DashboardScreen(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(ElectricBlue)
+                                .background(primaryColor)
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
@@ -461,26 +463,38 @@ fun DashboardScreen(
                             CircularProgressIndicator(
                                 modifier = Modifier.size(12.dp),
                                 strokeWidth = 1.5.dp,
-                                color = ElectricBlue
+                                color = primaryColor
                             )
                         }
                     }
 
-                    // Re-evaluate button with nice icon
-                    IconButton(
+                    // Improved Refresh Button and Text!
+                    TextButton(
                         onClick = { viewModel.generateAIRecommendations() },
                         modifier = Modifier
-                            .size(28.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.White.copy(alpha = 0.6f))
-                            .testTag("re_evaluate_ai_btn")
+                            .height(32.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(primaryColor.copy(alpha = 0.15f))
+                            .testTag("re_evaluate_ai_btn"),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Ask Gemini",
-                            tint = ElectricBlue,
-                            modifier = Modifier.size(14.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Ask Gemini",
+                                tint = primaryColor,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = if (recommendationState is RecommendationUiState.Loading) "Analyzing..." else "Ask Gemini",
+                                color = primaryColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
 
@@ -495,7 +509,7 @@ fun DashboardScreen(
                     Column {
                         Text(
                             text = displaySymbol,
-                            color = Color(0xFF001E2F),
+                            color = textColor,
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -510,7 +524,7 @@ fun DashboardScreen(
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = displayPrice,
-                            color = Color(0xFF001E2F),
+                            color = textColor,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -549,7 +563,7 @@ fun DashboardScreen(
                         )
                         Text(
                             text = "$confidencePercent%",
-                            color = ElectricBlue,
+                            color = primaryColor,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -561,7 +575,7 @@ fun DashboardScreen(
                             .fillMaxWidth()
                             .height(6.dp)
                             .clip(RoundedCornerShape(3.dp)),
-                        color = ElectricBlue,
+                        color = primaryColor,
                         trackColor = Color.White.copy(alpha = 0.5f)
                     )
                 }
@@ -571,7 +585,7 @@ fun DashboardScreen(
                 // Summary Rationale text
                 Text(
                     text = overallSummary,
-                    color = Color(0xFF001E2F).copy(alpha = 0.85f),
+                    color = textColor.copy(alpha = 0.85f),
                     fontSize = 13.sp,
                     lineHeight = 18.sp
                 )
@@ -1849,6 +1863,149 @@ fun SettingsScreen(
                                 Text(mode, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Dynamic Accent Theme & Custom Color Picker Card
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = BorderStroke(1.dp, BorderSlate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Dynamic Accent Color", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Customize the application primary accent color instantly.", color = TextGrey, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Presets Grid
+                    Text("SELECT PRESET", color = TextGrey, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    val presets = listOf(
+                        "#2563EB" to "Sapphire Blue",
+                        "#10B981" to "Emerald Jade",
+                        "#8B5CF6" to "Mystic Amethyst",
+                        "#EF4444" to "Crimson Ruby",
+                        "#F59E0B" to "Radiant Amber",
+                        "#0EA5E9" to "Electric Cyan",
+                        "#EC4899" to "Neon Pink"
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        presets.take(4).forEach { (hex, name) ->
+                            val isSelected = profile.primaryColorHex.lowercase() == hex.lowercase()
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(Color(android.graphics.Color.parseColor(hex)))
+                                    .clickable { viewModel.updatePrimaryColor(hex) }
+                                    .border(
+                                        width = if (isSelected) 3.dp else 0.dp,
+                                        color = if (isSelected) TextWhite else Color.Transparent,
+                                        shape = androidx.compose.foundation.shape.CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Selected",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        presets.drop(4).forEach { (hex, name) ->
+                            val isSelected = profile.primaryColorHex.lowercase() == hex.lowercase()
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(Color(android.graphics.Color.parseColor(hex)))
+                                    .clickable { viewModel.updatePrimaryColor(hex) }
+                                    .border(
+                                        width = if (isSelected) 3.dp else 0.dp,
+                                        color = if (isSelected) TextWhite else Color.Transparent,
+                                        shape = androidx.compose.foundation.shape.CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Selected",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(20.dp))
+                    
+                    // Slider-based Custom Color Picker (HUE Slider)
+                    Text("CUSTOM HUE PICKER", color = TextGrey, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    val currentHSV = remember(profile.primaryColorHex) {
+                        val hsv = FloatArray(3)
+                        try {
+                            android.graphics.Color.colorToHSV(android.graphics.Color.parseColor(profile.primaryColorHex), hsv)
+                        } catch (e: Exception) {
+                            android.graphics.Color.colorToHSV(android.graphics.Color.parseColor("#2563EB"), hsv)
+                        }
+                        hsv
+                    }
+                    
+                    var sliderHue by remember(profile.primaryColorHex) { mutableStateOf(currentHSV[0]) }
+                    
+                    Slider(
+                        value = sliderHue,
+                        onValueChange = { h ->
+                            sliderHue = h
+                            val hsv = floatArrayOf(h, 0.85f, 0.95f)
+                            val colorInt = android.graphics.Color.HSVToColor(hsv)
+                            val hexStr = String.format("#%06X", 0xFFFFFF and colorInt)
+                            viewModel.updatePrimaryColor(hexStr)
+                        },
+                        valueRange = 0f..360f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(sliderHue, 0.85f, 0.95f))),
+                            activeTrackColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(sliderHue, 0.85f, 0.95f))).copy(alpha = 0.4f)
+                        ),
+                        modifier = Modifier.fillMaxWidth().testTag("hue_color_picker_slider")
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Current Hex:", color = TextGrey, fontSize = 12.sp)
+                        Text(
+                            text = profile.primaryColorHex.uppercase(),
+                            color = Color(android.graphics.Color.parseColor(profile.primaryColorHex)),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
                     }
                 }
             }

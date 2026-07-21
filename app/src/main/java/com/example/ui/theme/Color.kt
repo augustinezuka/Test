@@ -25,10 +25,13 @@ val LightTagBg = Color(0xFFF1F0F4)        // Light gray badge
 val LightSpecCard = Color(0xFFD1E4FF)     // Soft light blue highlight card
 
 // Primary accents remain vibrant and accessible in both modes
-val ElectricBlue = Color(0xFF2563EB)      // Premium primary blue
+val StaticElectricBlue = Color(0xFF2563EB)      // Premium static primary blue
 val NeonCyan = Color(0xFF0EA5E9)          // Electric cyan
 val BullishGreen = Color(0xFF10B981)      // Vibrant green for upward trend
 val BearishRed = Color(0xFFEF4444)        // Vibrant red for downward trend
+
+val ElectricBlue: Color
+    @Composable get() = MaterialTheme.colorScheme.primary
 
 // Legacy colors kept for backward compatibility
 val Purple80 = Color(0xFF90CAF9)

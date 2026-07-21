@@ -23,7 +23,7 @@ class MainActivity : ComponentActivity() {
         "Dark" -> true
         else -> androidx.compose.foundation.isSystemInDarkTheme()
       }
-      MyApplicationTheme(darkTheme = darkTheme) {
+      MyApplicationTheme(darkTheme = darkTheme, primaryColorHex = profile.primaryColorHex) {
         ForexApp(viewModel = viewModel)
       }
     }
