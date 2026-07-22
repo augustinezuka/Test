@@ -3,6 +3,8 @@ package com.example.data.api
 import android.util.Log
 import com.example.BuildConfig
 import com.example.data.forex.ForexPairData
+import com.example.data.logger.AppLogger
+import com.example.data.logger.LogCategory
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -116,7 +118,12 @@ object GeminiClient {
         Log.d(TAG, "isApiKeyConfigured: $isKeyValid, key prefix: ${BuildConfig.GEMINI_API_KEY.take(5)}")
 
         if (!isKeyValid) {
-            // No API key configured, use high-fidelity simulator fallback
+            AppLogger.logInfo(
+                category = LogCategory.GEMINI_AI,
+                tag = "Gemini_SimMode",
+                message = "API key not set or template default. Using offline heuristic engine.",
+                details = "User Profile: $riskLevel | Experience: $experienceLevel"
+            )
             return generateMockAIResponse(pairsData, riskLevel, experienceLevel)
         }
 
@@ -128,17 +135,48 @@ object GeminiClient {
             )
         )
 
+        val startTime = System.currentTimeMillis()
         try {
+            AppLogger.logInfo(
+                category = LogCategory.GEMINI_AI,
+                tag = "Gemini_Req",
+                message = "Sending generateContent request to gemini-3.5-flash model...",
+                details = "Prompt length: ${prompt.length} chars | Target pairs: ${pairsData.size}"
+            )
             val response = service.generateContent(BuildConfig.GEMINI_API_KEY, request)
+            val elapsed = System.currentTimeMillis() - startTime
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             if (!jsonText.isNullOrEmpty()) {
                 Log.d(TAG, "Raw Gemini JSON: $jsonText")
+                AppLogger.logSuccess(
+                    category = LogCategory.GEMINI_AI,
+                    tag = "Gemini_200_OK",
+                    message = "Gemini 3.5 Flash report generated successfully!",
+                    details = "Response size: ${jsonText.length} chars",
+                    statusCode = 200,
+                    latencyMs = elapsed
+                )
                 return parseStructuredResponse(jsonText, pairsData, riskLevel)
             } else {
+                AppLogger.logWarn(
+                    category = LogCategory.GEMINI_AI,
+                    tag = "Gemini_EmptyResponse",
+                    message = "Gemini returned empty text payload. Triggering heuristic fallback.",
+                    details = "Candidates count: ${response.candidates?.size ?: 0}"
+                )
                 throw Exception("Received empty response from Gemini API")
             }
         } catch (e: Exception) {
+            val elapsed = System.currentTimeMillis() - startTime
             Log.e(TAG, "Gemini API call failed: ${e.message}. Falling back to simulation.", e)
+            AppLogger.logError(
+                category = LogCategory.GEMINI_AI,
+                tag = "Gemini_ReqFail",
+                message = "Gemini API request failed: ${e.localizedMessage}",
+                errorDetails = e.stackTraceToString().take(300),
+                statusCode = 500,
+                latencyMs = elapsed
+            )
             return generateMockAIResponse(pairsData, riskLevel, experienceLevel)
         }
     }

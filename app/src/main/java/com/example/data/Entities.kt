@@ -14,7 +14,11 @@ data class UserProfile(
     val themeMode: String = "Dark", // "Light", "Dark", "Auto"
     val externalApiKey: String = "", // Custom API integration key
     val externalApiUrl: String = "https://api.polygon.io/v2/reference/news", // Default external financial market news feed
-    val primaryColorHex: String = "#2563EB" // Dynamic theme primary color
+    val primaryColorHex: String = "#2563EB", // Dynamic theme primary color
+    val hapticFeedbackEnabled: Boolean = true,
+    val audioAlertsEnabled: Boolean = true,
+    val dataSaverEnabled: Boolean = false,
+    val autoRefreshRateSec: Int = 5
 )
 
 @Entity(tableName = "watchlist_items")

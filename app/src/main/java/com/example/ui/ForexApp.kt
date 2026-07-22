@@ -80,9 +80,26 @@ fun ForexApp(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(68.dp)
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(CosmicCard)
-                            .border(1.dp, BorderSlate.copy(alpha = 0.8f), RoundedCornerShape(22.dp))
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    listOf(
+                                        Color(0xEE131926),
+                                        Color(0xF10D0F14)
+                                    )
+                                )
+                            )
+                            .border(
+                                1.dp,
+                                androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                    listOf(
+                                        Color.White.copy(alpha = 0.25f),
+                                        Color(0x552563EB),
+                                        Color.White.copy(alpha = 0.25f)
+                                    )
+                                ),
+                                RoundedCornerShape(24.dp)
+                            )
                             .padding(horizontal = 8.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
@@ -103,7 +120,7 @@ fun ForexApp(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .clip(RoundedCornerShape(18.dp))
                                     .clickable {
                                         navController.navigate(route) {
                                             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -135,7 +152,7 @@ fun ForexApp(
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Box(
                                             modifier = Modifier
-                                                .size(width = 12.dp, height = 3.dp)
+                                                .size(width = 14.dp, height = 3.dp)
                                                 .clip(RoundedCornerShape(1.5.dp))
                                                 .background(ElectricBlue)
                                         )

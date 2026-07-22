@@ -11,6 +11,10 @@ import com.example.data.api.GeminiClient
 import com.example.data.forex.ForexEngine
 import com.example.data.forex.ForexPairData
 import com.example.data.forex.ForexRepository
+import com.example.data.forex.LiveForexWebSocketService
+import com.example.data.logger.AppLogger
+import com.example.data.logger.LogCategory
+import com.example.data.logger.LogEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -74,11 +78,14 @@ class ForexViewModel(application: Application) : AndroidViewModel(application) {
     val notifications: StateFlow<List<AppNotification>> = _notifications.asStateFlow()
 
     // Raw market pairs data
-    private val _pairsFlow = MutableStateFlow<List<ForexPairData>>(emptyList())
+    private val initialPairsData = LiveForexWebSocketService.livePairsFlow.value.ifEmpty { ForexEngine.getAllPairsData() }
+    private val _pairsFlow = MutableStateFlow<List<ForexPairData>>(initialPairsData)
     val pairsFlow: StateFlow<List<ForexPairData>> = _pairsFlow.asStateFlow()
 
     // Screen-level market UI state
-    private val _marketUiState = MutableStateFlow<MarketUiState>(MarketUiState.Loading)
+    private val _marketUiState = MutableStateFlow<MarketUiState>(
+        if (initialPairsData.isNotEmpty()) MarketUiState.Success(initialPairsData) else MarketUiState.Loading
+    )
     val marketUiState: StateFlow<MarketUiState> = _marketUiState.asStateFlow()
 
     // Active AI Recommendation Report State
@@ -115,9 +122,13 @@ class ForexViewModel(application: Application) : AndroidViewModel(application) {
         emit(GeminiClient.isApiKeyConfigured())
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    val isWsConnected: StateFlow<Boolean> = LiveForexWebSocketService.isConnected
+
     init {
-        // Start automatic price ticker simulation
-        startPriceTicker()
+        // Start live WebSocket stream for actual market quotes
+        LiveForexWebSocketService.start()
+        observeLiveWebSocketStream()
+        
         // Ensure default profile exists
         viewModelScope.launch {
             repository.getOrCreateProfile()
@@ -125,70 +136,74 @@ class ForexViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Periodically updates market prices to simulate live exchange activity (every 10 seconds).
+     * Observes real-time WebSocket ticks coming from LiveForexWebSocketService.
      */
-    private fun startPriceTicker() {
-        viewModelScope.launch(Dispatchers.Default) {
-            while (true) {
-                try {
-                    val freshData = ForexEngine.getAllPairsData()
+    private fun observeLiveWebSocketStream() {
+        viewModelScope.launch {
+            LiveForexWebSocketService.livePairsFlow.collect { freshData ->
+                if (freshData.isNotEmpty()) {
                     _pairsFlow.value = freshData
-                    if (_marketUiState.value is MarketUiState.Loading || _marketUiState.value is MarketUiState.Success) {
-                        _marketUiState.value = MarketUiState.Success(freshData)
-                    }
-                    
-                    // Reactive Price Alert Trigger Checks
-                    val currentAlerts = _priceAlerts.value
-                    var alertsUpdated = false
-                    val updatedAlerts = currentAlerts.map { alert ->
-                        if (alert.isEnabled && !alert.isTriggered) {
-                            val matchingPair = freshData.find { it.symbol == alert.symbol }
-                            if (matchingPair != null) {
-                                val curPrice = matchingPair.currentPrice
-                                val hasCrossed = if (alert.isAbove) {
-                                    curPrice >= alert.targetPrice
-                                } else {
-                                    curPrice <= alert.targetPrice
-                                }
-                                if (hasCrossed) {
-                                    alertsUpdated = true
-                                    
-                                    val direction = if (alert.isAbove) "surpassed" else "dropped below"
-                                    val trendStr = if (curPrice > alert.targetPrice) "Bullish expansion 📈" else "Corrective pullback 📉"
-                                    val dailyChange = matchingPair.dailyChangePercent
-                                    val volatility = matchingPair.volatilityScore
-                                    val leadNews = matchingPair.news.firstOrNull()?.replace(".", "") ?: "technical pivot breakout"
-                                    
-                                    val title = "AI Alert: ${alert.symbol} Key Pivot Reached! 🤖✨"
-                                    val message = "${alert.symbol} has $direction your trigger price of ${String.format("%.4f", alert.targetPrice)} (Current: ${String.format("%.4f", curPrice)}). Today's change is ${String.format("%.2f", dailyChange)}% ($trendStr) with volatility at ${String.format("%.1f", volatility)}/10. Catalyst: '$leadNews'. Monitor closely for breakout entries."
-                                    
-                                    triggerNotification(
-                                        title = title,
-                                        message = message,
-                                        type = "PRICE_ALERT"
-                                    )
-                                    alert.copy(isEnabled = false, isTriggered = true)
-                                } else {
-                                    alert
-                                }
-                            } else {
-                                alert
-                            }
-                        } else {
-                            alert
-                        }
-                    }
-                    if (alertsUpdated) {
-                        _priceAlerts.value = updatedAlerts
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Ticker failed to refresh", e)
-                    if (_pairsFlow.value.isEmpty()) {
-                        _marketUiState.value = MarketUiState.Error("Failed to fetch live currency rates.")
-                    }
+                    _marketUiState.value = MarketUiState.Success(freshData)
+                    checkPriceAlerts(freshData)
                 }
-                delay(10000) // 10 seconds interval
             }
+        }
+    }
+
+    private fun checkPriceAlerts(freshData: List<ForexPairData>) {
+        val currentAlerts = _priceAlerts.value
+        var alertsUpdated = false
+        val updatedAlerts = currentAlerts.map { alert ->
+            if (alert.isEnabled && !alert.isTriggered) {
+                val matchingPair = freshData.find { it.symbol == alert.symbol }
+                if (matchingPair != null) {
+                    val curPrice = matchingPair.currentPrice
+                    val hasCrossed = if (alert.isAbove) {
+                        curPrice >= alert.targetPrice
+                    } else {
+                        curPrice <= alert.targetPrice
+                    }
+                    if (hasCrossed) {
+                        alertsUpdated = true
+                        val direction = if (alert.isAbove) "surpassed" else "dropped below"
+                        val trendStr = if (curPrice > alert.targetPrice) "Bullish expansion 📈" else "Corrective pullback 📉"
+                        val dailyChange = matchingPair.dailyChangePercent
+                        val volatility = matchingPair.volatilityScore
+                        val leadNews = matchingPair.news.firstOrNull()?.replace(".", "") ?: "technical pivot breakout"
+                        
+                        val title = "AI Alert: ${alert.symbol} Key Pivot Reached! 🤖✨"
+                        val message = "${alert.symbol} has $direction your trigger price of ${String.format("%.4f", alert.targetPrice)} (Current: ${String.format("%.4f", curPrice)}). Today's change is ${String.format("%.2f", dailyChange)}% ($trendStr) with volatility at ${String.format("%.1f", volatility)}/10. Catalyst: '$leadNews'. Monitor closely for breakout entries."
+                        
+                        triggerNotification(
+                            title = title,
+                            message = message,
+                            type = "PRICE_ALERT"
+                        )
+                        alert.copy(isEnabled = false, isTriggered = true)
+                    } else {
+                        alert
+                    }
+                } else {
+                    alert
+                }
+            } else {
+                alert
+            }
+        }
+        if (alertsUpdated) {
+            _priceAlerts.value = updatedAlerts
+        }
+    }
+
+    fun refreshMarketData() {
+        viewModelScope.launch {
+            _marketUiState.value = MarketUiState.Loading
+            LiveForexWebSocketService.triggerManualRefresh()
+            delay(600)
+            val freshData = LiveForexWebSocketService.livePairsFlow.value.ifEmpty { ForexEngine.getAllPairsData() }
+            _pairsFlow.value = freshData
+            _marketUiState.value = MarketUiState.Success(freshData)
+            AppLogger.logInfo(LogCategory.SYSTEM, "Refresh", "Market quotes manually refreshed")
         }
     }
 
@@ -273,10 +288,96 @@ class ForexViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Real-time system logs flow
+    val systemLogs: StateFlow<List<LogEntry>> = AppLogger.logsFlow
+
     fun toggleNotifications(enabled: Boolean) {
         viewModelScope.launch {
             val current = userProfile.value
             repository.updateProfile(current.copy(notificationsEnabled = enabled))
+            AppLogger.logInfo(LogCategory.SYSTEM, "Settings", "Local notifications set to: $enabled")
+        }
+    }
+
+    fun toggleHapticFeedback(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = userProfile.value
+            repository.updateProfile(current.copy(hapticFeedbackEnabled = enabled))
+            AppLogger.logInfo(LogCategory.SYSTEM, "Settings", "Haptic feedback set to: $enabled")
+        }
+    }
+
+    fun toggleAudioAlerts(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = userProfile.value
+            repository.updateProfile(current.copy(audioAlertsEnabled = enabled))
+            AppLogger.logInfo(LogCategory.SYSTEM, "Settings", "Audio alert chimes set to: $enabled")
+        }
+    }
+
+    fun toggleDataSaver(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = userProfile.value
+            repository.updateProfile(current.copy(dataSaverEnabled = enabled))
+            AppLogger.logInfo(LogCategory.SYSTEM, "Settings", "Data Saver mode set to: $enabled")
+        }
+    }
+
+    fun updateAutoRefreshRate(rateSec: Int) {
+        viewModelScope.launch {
+            val current = userProfile.value
+            repository.updateProfile(current.copy(autoRefreshRateSec = rateSec))
+            AppLogger.logInfo(LogCategory.SYSTEM, "Settings", "Auto refresh rate changed to: ${rateSec}s")
+        }
+    }
+
+    fun clearSystemLogs() {
+        AppLogger.clearLogs()
+    }
+
+    fun simulateApiFailureLog() {
+        AppLogger.simulateApiFailure()
+    }
+
+    fun getExportableLogs(): String {
+        return AppLogger.exportLogsAsString()
+    }
+
+    fun runSystemDiagnostics() {
+        viewModelScope.launch(Dispatchers.IO) {
+            AppLogger.logInfo(LogCategory.SYSTEM, "DiagnosticTest", "Initiating System & API Diagnostics Ping Sequence...")
+            
+            // Ping Binance REST
+            val startRest = System.currentTimeMillis()
+            try {
+                val client = okhttp3.OkHttpClient.Builder().connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS).build()
+                val req = okhttp3.Request.Builder().url("https://api.binance.com/api/v3/ping").build()
+                val resp = client.newCall(req).execute()
+                val elapsed = System.currentTimeMillis() - startRest
+                if (resp.isSuccessful) {
+                    AppLogger.logSuccess(LogCategory.API_REST, "Diag_Binance", "Binance API Ping OK", "Response 200 OK", 200, elapsed)
+                } else {
+                    AppLogger.logError(LogCategory.API_REST, "Diag_Binance", "Binance API Ping Failed HTTP ${resp.code}", "Endpoint returned status ${resp.code}", resp.code, elapsed)
+                }
+            } catch (e: Exception) {
+                val elapsed = System.currentTimeMillis() - startRest
+                AppLogger.logError(LogCategory.API_REST, "Diag_Binance", "Binance API Ping Exception", e.localizedMessage, 500, elapsed)
+            }
+
+            // Ping WebSocket status
+            val isWs = isWsConnected.value
+            if (isWs) {
+                AppLogger.logSuccess(LogCategory.WEBSOCKET, "Diag_WebSocket", "WebSocket Stream Active", "Stream wss://stream.binance.com:9443 is healthy")
+            } else {
+                AppLogger.logWarn(LogCategory.WEBSOCKET, "Diag_WebSocket", "WebSocket Disconnected", "Stream offline, using REST fallback pollers")
+            }
+
+            // Ping Gemini Key configuration
+            if (isRealApiKeyConfigured.value) {
+                AppLogger.logSuccess(LogCategory.GEMINI_AI, "Diag_GeminiKey", "Gemini AI Key Valid", "Pro API credentials detected in BuildConfig")
+            } else {
+                AppLogger.logInfo(LogCategory.GEMINI_AI, "Diag_GeminiKey", "Gemini Heuristic Engine Active", "Using built-in client prediction model")
+            }
         }
     }
 

@@ -98,6 +98,10 @@ object ForexEngine {
      * but dynamic intraday simulation.
      */
     fun getPairData(symbol: String): ForexPairData {
+        val liveData = LiveForexWebSocketService.getPairData(symbol)
+        if (liveData != null) {
+            return liveData
+        }
         val basePrice = basePrices[symbol] ?: 1.0000
         val seed = symbol.hashCode().toLong() + (System.currentTimeMillis() / 86400000)
         val pairRandom = Random(seed)
@@ -179,6 +183,10 @@ object ForexEngine {
      * Helper to get data for all pairs.
      */
     fun getAllPairsData(): List<ForexPairData> {
+        val liveList = LiveForexWebSocketService.livePairsFlow.value
+        if (liveList.isNotEmpty()) {
+            return liveList
+        }
         return pairsList.map { getPairData(it.first) }
     }
 }

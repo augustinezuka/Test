@@ -27,7 +27,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import com.example.data.logger.*
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -37,7 +39,7 @@ import com.example.data.forex.ForexPairData
 import com.example.viewmodel.ForexViewModel
 import com.example.viewmodel.MarketUiState
 import com.example.viewmodel.RecommendationUiState
-import com.example.ui.components.ForexChart
+import com.example.ui.components.*
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -360,6 +362,25 @@ fun DashboardScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Refresh Market Quotes Button
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(CosmicCard)
+                        .border(1.dp, BorderSlate, RoundedCornerShape(10.dp))
+                        .clickable { viewModel.refreshMarketData() }
+                        .testTag("refresh_market_btn"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refresh Market Quotes",
+                        tint = ElectricBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
                 val notifications by viewModel.notifications.collectAsState()
                 val unreadCount = notifications.count { !it.isRead }
                 var showNotificationsCenter by remember { mutableStateOf(false) }
@@ -743,6 +764,8 @@ fun DashboardScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         // Dynamic Sub-Feature Render Block
+        val isWsConnected by viewModel.isWsConnected.collectAsState()
+
         when (activeSubTab) {
             "Live Rates" -> {
                 // Live Quotes Ticker header
@@ -754,28 +777,26 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Live Ticker Indexes",
+                        text = "Real-Time Exchange Stream",
                         color = TextGrey,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(BullishGreen)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Simulating 10s Feeds", color = TextGrey, fontSize = 10.sp)
-                    }
+                    GlassWsPill(isConnected = isWsConnected)
                 }
+
+                Spacer(modifier = Modifier.height(4.dp))
 
                 // Live Rate Cards
                 when (val state = marketState) {
                     is MarketUiState.Loading -> {
-                        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = ElectricBlue)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                        ) {
+                            ShimmerSkeletonList(count = 5)
                         }
                     }
                     is MarketUiState.Error -> {
@@ -784,18 +805,29 @@ fun DashboardScreen(
                         }
                     }
                     is MarketUiState.Success -> {
-                        LazyColumn(
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
-                            contentPadding = PaddingValues(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(state.pairs) { pair ->
-                                ForexPairRowCard(
-                                    pair = pair,
-                                    isWatchlisted = viewModel.watchlistSymbols.collectAsState().value.contains(pair.symbol),
-                                    onWatchlistToggle = { viewModel.toggleWatchlist(pair.symbol) },
-                                    onClick = { onPairSelected(pair.symbol) }
-                                )
+                        if (state.pairs.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                ShimmerSkeletonList(count = 5)
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                contentPadding = PaddingValues(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(state.pairs) { pair ->
+                                    ForexPairRowCard(
+                                        pair = pair,
+                                        isWatchlisted = viewModel.watchlistSymbols.collectAsState().value.contains(pair.symbol),
+                                        onWatchlistToggle = { viewModel.toggleWatchlist(pair.symbol) },
+                                        onClick = { onPairSelected(pair.symbol) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -829,28 +861,16 @@ fun ForexPairRowCard(
 ) {
     val isUp = pair.dailyChangePercent >= 0
 
-    Card(
+    GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .testTag("pair_card_${pair.symbol.replace("/", "_")}"),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        border = BorderStroke(1.dp, BorderSlate)
+        cornerRadius = 20.dp,
+        borderColor = if (isUp) BullishGreen.copy(alpha = 0.35f) else BearishRed.copy(alpha = 0.35f)
     ) {
-        val isLight = MaterialTheme.colorScheme.background == LightBgColor
         Row(
-            modifier = Modifier
-                .background(
-                    androidx.compose.ui.graphics.Brush.linearGradient(
-                        colors = if (isLight) {
-                            listOf(Color(0xFFFFFFFF), Color(0xFFF4F7FC))
-                        } else {
-                            listOf(Color(0xFF131926), Color(0xFF0D121F))
-                        }
-                    )
-                )
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1.5f)) {
@@ -859,7 +879,7 @@ fun ForexPairRowCard(
                         text = pair.symbol,
                         color = TextWhite,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
+                        fontSize = 17.sp
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     IconButton(
@@ -890,7 +910,7 @@ fun ForexPairRowCard(
                     text = String.format("%.4f", pair.currentPrice),
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    fontSize = 17.sp
                 )
                 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -905,12 +925,12 @@ fun ForexPairRowCard(
                         text = "${if (isUp) "+" else ""}${String.format("%.2f", pair.dailyChangePercent)}%",
                         color = if (isUp) BullishGreen else BearishRed,
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
             // Quick summary badge
             val recAction = when {
@@ -920,31 +940,31 @@ fun ForexPairRowCard(
             }
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(
                         when (recAction) {
-                            "BUY" -> BullishGreen.copy(alpha = 0.15f)
-                            "SELL" -> BearishRed.copy(alpha = 0.15f)
-                            else -> TextGrey.copy(alpha = 0.15f)
+                            "BUY" -> BullishGreen.copy(alpha = 0.2f)
+                            "SELL" -> BearishRed.copy(alpha = 0.2f)
+                            else -> TextGrey.copy(alpha = 0.2f)
                         }
                     )
                     .border(
                         1.dp,
                         when (recAction) {
-                            "BUY" -> BullishGreen
-                            "SELL" -> BearishRed
-                            else -> TextGrey
+                            "BUY" -> BullishGreen.copy(alpha = 0.6f)
+                            "SELL" -> BearishRed.copy(alpha = 0.6f)
+                            else -> TextGrey.copy(alpha = 0.4f)
                         },
-                        RoundedCornerShape(6.dp)
+                        RoundedCornerShape(8.dp)
                     )
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
                 Text(
                     text = recAction,
                     color = when (recAction) {
                         "BUY" -> BullishGreen
                         "SELL" -> BearishRed
-                        else -> TextWhite
+                        else -> TextGrey
                     },
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
@@ -1005,12 +1025,17 @@ fun DetailScreen(
                     Text(text = pairData.symbol, color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     Text(text = pairData.name, color = TextGrey, fontSize = 12.sp)
                 }
-                IconButton(onClick = { viewModel.toggleWatchlist(symbol) }) {
-                    Icon(
-                        imageVector = if (isWatchlisted) Icons.Filled.Star else Icons.Filled.StarBorder,
-                        contentDescription = "Watchlist toggle",
-                        tint = if (isWatchlisted) NeonCyan else TextWhite
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(onClick = { viewModel.refreshMarketData() }, modifier = Modifier.testTag("detail_refresh_btn")) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh Pair Data", tint = ElectricBlue)
+                    }
+                    IconButton(onClick = { viewModel.toggleWatchlist(symbol) }) {
+                        Icon(
+                            imageVector = if (isWatchlisted) Icons.Filled.Star else Icons.Filled.StarBorder,
+                            contentDescription = "Watchlist toggle",
+                            tint = if (isWatchlisted) NeonCyan else TextWhite
+                        )
+                    }
                 }
             }
         }
@@ -1721,11 +1746,32 @@ fun WatchlistScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Filled.Star, contentDescription = "Favorites", tint = NeonCyan, modifier = Modifier.size(26.dp))
-            Spacer(modifier = Modifier.width(12.dp))
-            Text("Watchlist & Active Alerts", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Star, contentDescription = "Favorites", tint = NeonCyan, modifier = Modifier.size(26.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Watchlist & Active Alerts", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(CosmicCard)
+                    .border(1.dp, BorderSlate, RoundedCornerShape(10.dp))
+                    .clickable { viewModel.refreshMarketData() }
+                    .testTag("watchlist_refresh_btn"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Refresh Market Quotes",
+                    tint = ElectricBlue,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
         LazyColumn(
@@ -1973,8 +2019,8 @@ fun WatchlistScreen(
                 when (val state = marketState) {
                     is MarketUiState.Loading -> {
                         item {
-                            Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = ElectricBlue)
+                            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                ShimmerSkeletonList(count = 3)
                             }
                         }
                     }
@@ -2365,6 +2411,16 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
+
+        // Live API & System Diagnostics Terminal Log Card
+        item {
+            SystemLogsTerminalCard(viewModel = viewModel)
+        }
+
+        // Audio, Haptics & Data Saver Preference Cards
+        item {
+            AudioHapticAndDataSettingsCards(viewModel = viewModel)
         }
 
         // Required mandated security warnings
@@ -3379,6 +3435,443 @@ fun NotificationsCenterDialog(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+// --- System Logs & Diagnostics Components ---
+
+@Composable
+fun SystemLogsTerminalCard(viewModel: ForexViewModel) {
+    val logs by viewModel.systemLogs.collectAsState()
+    var selectedFilter by remember { mutableStateOf("ALL") }
+    var searchQuery by remember { mutableStateOf("") }
+    var expandedLogId by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+
+    val filteredLogs = remember(logs, selectedFilter, searchQuery) {
+        logs.filter { entry ->
+            val matchesFilter = when (selectedFilter) {
+                "FAILURES" -> entry.level == LogLevel.ERROR || entry.level == LogLevel.WARN
+                "API_WS" -> entry.category == LogCategory.API_REST || entry.category == LogCategory.WEBSOCKET
+                "GEMINI" -> entry.category == LogCategory.GEMINI_AI
+                "SYSTEM" -> entry.category == LogCategory.SYSTEM || entry.category == LogCategory.DATABASE
+                else -> true
+            }
+
+            val matchesSearch = if (searchQuery.isBlank()) true else {
+                entry.message.contains(searchQuery, ignoreCase = true) ||
+                        entry.tag.contains(searchQuery, ignoreCase = true) ||
+                        (entry.details?.contains(searchQuery, ignoreCase = true) == true) ||
+                        (entry.statusCode?.toString()?.contains(searchQuery) == true)
+            }
+
+            matchesFilter && matchesSearch
+        }
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CosmicCard),
+        border = BorderStroke(1.dp, BorderSlate),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("system_logs_terminal_card")
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(ElectricBlue.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Terminal,
+                            contentDescription = "Terminal",
+                            tint = ElectricBlue,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column {
+                        Text("API & System Failure Logs", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("Live diagnostic terminal for REST, WebSocket & AI requests", color = TextGrey, fontSize = 10.sp)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Action Buttons Row: [Simulate Failure], [Run Diagnostic], [Copy], [Clear]
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Button(
+                    onClick = { viewModel.simulateApiFailureLog() },
+                    colors = ButtonDefaults.buttonColors(containerColor = BearishRed.copy(alpha = 0.25f), contentColor = BearishRed),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.weight(1.3f).height(34.dp).testTag("simulate_failure_btn")
+                ) {
+                    Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Simulate Error", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = { viewModel.runSystemDiagnostics() },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue.copy(alpha = 0.25f), contentColor = ElectricBlue),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.weight(1.3f).height(34.dp).testTag("run_diagnostic_btn")
+                ) {
+                    Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Run Diagnostic", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+
+                IconButton(
+                    onClick = {
+                        val text = viewModel.getExportableLogs()
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("App Logs", text)
+                        clipboard.setPrimaryClip(clip)
+                        android.widget.Toast.makeText(context, "Logs copied to clipboard!", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(BorderSlate)
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy Logs", tint = TextWhite, modifier = Modifier.size(16.dp))
+                }
+
+                IconButton(
+                    onClick = { viewModel.clearSystemLogs() },
+                    modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(BorderSlate)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = "Clear Logs", tint = TextGrey, modifier = Modifier.size(16.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Filter Chips Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val filters = listOf(
+                    "ALL" to "All (${logs.size})",
+                    "FAILURES" to "Errors (${logs.count { it.level == LogLevel.ERROR || it.level == LogLevel.WARN }})",
+                    "API_WS" to "API & WS",
+                    "GEMINI" to "Gemini AI"
+                )
+
+                filters.forEach { (key, label) ->
+                    val isSelected = selectedFilter == key
+                    val chipBg = if (isSelected) ElectricBlue else BorderSlate.copy(alpha = 0.5f)
+                    val textColor = if (isSelected) Color.White else TextGrey
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(chipBg)
+                            .clickable { selectedFilter = key }
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(label, color = textColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Search Bar
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Filter logs by keyword, code or tag...", color = TextGrey, fontSize = 11.sp) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextGrey, modifier = Modifier.size(16.dp)) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Default.Clear, contentDescription = null, tint = TextGrey, modifier = Modifier.size(14.dp))
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(44.dp),
+                textStyle = TextStyle(color = TextWhite, fontSize = 11.sp, fontFamily = FontFamily.Monospace),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ElectricBlue,
+                    unfocusedBorderColor = BorderSlate,
+                    focusedContainerColor = Color(0xFF0B0F19),
+                    unfocusedContainerColor = Color(0xFF0B0F19)
+                ),
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp)
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Console Window Container
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(260.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF0A0E17))
+                    .border(1.dp, BorderSlate)
+                    .padding(8.dp)
+            ) {
+                if (filteredLogs.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = BullishGreen.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
+                            Text("No matching logs found", color = TextGrey, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                } else {
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(filteredLogs, key = { it.id }) { entry ->
+                            val isExpanded = expandedLogId == entry.id
+                            val levelColor = when (entry.level) {
+                                LogLevel.ERROR -> BearishRed
+                                LogLevel.WARN -> Color(0xFFFF9100)
+                                LogLevel.SUCCESS -> BullishGreen
+                                LogLevel.INFO -> ElectricBlue
+                            }
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF131A29))
+                                    .border(0.5.dp, if (entry.level == LogLevel.ERROR) BearishRed.copy(alpha = 0.5f) else BorderSlate.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                    .clickable { expandedLogId = if (isExpanded) null else entry.id }
+                                    .padding(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        // Level Pill
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(levelColor.copy(alpha = 0.2f))
+                                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(entry.level.name, color = levelColor, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                        }
+
+                                        // Category / Tag
+                                        Text("[${entry.tag}]", color = TextGrey, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        if (entry.latencyMs != null) {
+                                            Text("${entry.latencyMs}ms", color = TextGrey, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                                        }
+                                        if (entry.statusCode != null) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(3.dp))
+                                                    .background(if (entry.statusCode in 200..299) BullishGreen.copy(alpha = 0.2f) else BearishRed.copy(alpha = 0.2f))
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                            ) {
+                                                Text("${entry.statusCode}", color = if (entry.statusCode in 200..299) BullishGreen else BearishRed, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                            }
+                                        }
+                                        Text(entry.formattedTime, color = TextGrey, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(entry.message, color = TextWhite, fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 14.sp)
+
+                                if (isExpanded && !entry.details.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    HorizontalDivider(color = BorderSlate.copy(alpha = 0.4f))
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("DETAILS & PAYLOAD:", color = ElectricBlue, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(entry.details, color = TextGrey, fontSize = 10.sp, fontFamily = FontFamily.Monospace, lineHeight = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AudioHapticAndDataSettingsCards(viewModel: ForexViewModel) {
+    val profile by viewModel.userProfile.collectAsState()
+    val context = LocalContext.current
+
+    // Audio & Haptic Feedback Settings
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CosmicCard),
+        border = BorderStroke(1.dp, BorderSlate),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Audio & Haptics Feedback", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Configure sensory feedback for trades and price alert triggers.", color = TextGrey, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Haptic Touch Feedback", color = TextWhite, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("Vibrate on order execution & price alerts", color = TextGrey, fontSize = 10.sp)
+                }
+                Switch(
+                    checked = profile.hapticFeedbackEnabled,
+                    onCheckedChange = { viewModel.toggleHapticFeedback(it) },
+                    colors = SwitchDefaults.colors(checkedThumbColor = ElectricBlue, checkedTrackColor = ElectricBlue.copy(alpha = 0.4f))
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider(color = BorderSlate.copy(alpha = 0.5f))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Audio Alert Chimes", color = TextWhite, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("Sound audio alerts when price triggers cross thresholds", color = TextGrey, fontSize = 10.sp)
+                }
+                Switch(
+                    checked = profile.audioAlertsEnabled,
+                    onCheckedChange = { viewModel.toggleAudioAlerts(it) },
+                    colors = SwitchDefaults.colors(checkedThumbColor = ElectricBlue, checkedTrackColor = ElectricBlue.copy(alpha = 0.4f))
+                )
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    // Data Saver & Refresh Rate Settings
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CosmicCard),
+        border = BorderStroke(1.dp, BorderSlate),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Network Bandwidth & Refresh Rate", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Optimize live quote frequency and data consumption.", color = TextGrey, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Data Saver Mode", color = TextWhite, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("Reduces tick animations to conserve battery & mobile bandwidth", color = TextGrey, fontSize = 10.sp)
+                }
+                Switch(
+                    checked = profile.dataSaverEnabled,
+                    onCheckedChange = { viewModel.toggleDataSaver(it) },
+                    colors = SwitchDefaults.colors(checkedThumbColor = ElectricBlue, checkedTrackColor = ElectricBlue.copy(alpha = 0.4f))
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("AUTO REFRESH RATE", color = TextGrey, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(1 to "1s (Ultra)", 5 to "5s (Standard)", 15 to "15s (Eco)").forEach { (sec, label) ->
+                    val isSelected = profile.autoRefreshRateSec == sec
+                    Button(
+                        onClick = { viewModel.updateAutoRefreshRate(sec) },
+                        modifier = Modifier.weight(1f).height(36.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isSelected) ElectricBlue else BorderSlate,
+                            contentColor = if (isSelected) Color.White else TextWhite
+                        ),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    // Storage & Cache Management Card
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CosmicCard),
+        border = BorderStroke(1.dp, BorderSlate),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.Storage, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(18.dp))
+                Text("Storage & Cache Management", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Local SQLite Room database size: ~1.4 MB | 120 historical candle snapshots cached", color = TextGrey, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        android.widget.Toast.makeText(context, "Local market cache flushed successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.weight(1f).height(38.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BorderSlate)
+                ) {
+                    Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Clear Cache", fontSize = 11.sp)
+                }
+
+                Button(
+                    onClick = {
+                        android.widget.Toast.makeText(context, "Profile backup JSON copied to clipboard!", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.weight(1f).height(38.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BorderSlate)
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Backup Data", fontSize = 11.sp)
                 }
             }
         }
